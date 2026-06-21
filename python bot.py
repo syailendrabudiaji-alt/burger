@@ -12,6 +12,26 @@ TOKEN = os.getenv("TOKEN")
 GUILD_ID = 1499402690957152338
 TIP_CHANNEL_ID = 1499407906213335070
 
+class FishView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Fish 🎣", style=discord.ButtonStyle.green)
+    async def fish_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        user_id = str(interaction.user.id)
+        user = get_user(user_id)
+
+        reward = random.randint(10, 30)
+
+        user["wallet"] += reward
+        update_user(user_id, user["wallet"], user["bank"])
+
+        await interaction.response.send_message(
+            f"🎣 You caught a fish!\n💰 +{reward} BC",
+            ephemeral=True
+        )
+
 if not TOKEN:
     raise ValueError("TOKEN environment variable not found!")
 
