@@ -2,12 +2,14 @@ import discord
 import asyncio
 import random
 import sqlite3
+import os
 from discord import app_commands
 
 # =====================
-# CONFIG
+# CONFIG (SAFE)
 # =====================
-TOKEN = "MTUxODE5NzEyMzU3OTkwODI0Ng.GkwPbU.Df-n8MXIRCSPBUFv5daJlwqEZkvm_O27TA_h1w"
+TOKEN = os.getenv("TOKEN")
+
 GUILD_ID = 1499402690957152338
 TIP_CHANNEL_ID = 1499407906213335070
 
@@ -34,7 +36,6 @@ CREATE TABLE IF NOT EXISTS users (
     bank INTEGER
 )
 """)
-
 conn.commit()
 
 # =====================
@@ -60,18 +61,16 @@ def update_user(user_id, wallet, bank):
     SET wallet = ?, bank = ?
     WHERE user_id = ?
     """, (wallet, bank, user_id))
-
     conn.commit()
 
 # =====================
 # TIPS SYSTEM
 # =====================
 tips = [
-    "🍔 Tip : Did you know that you cant install me in another server.",
-    "💰 Tip : Save money in your bank to protect it !",
-    "🛒 Tip : Check /shop for limited items !",
-    "⚡ Tip : Working with /work gives random rewards !",
-    "🏆 Tip : Climb the leaderboard to become richest !"
+    "🍔 Tip : Save money in your bank to protect it!",
+    "💰 Tip : Check /shop for items!",
+    "⚡ Tip : Use /work to earn money!",
+    "🏆 Tip : Climb the leaderboard!"
 ]
 
 async def tip_loop():
@@ -83,7 +82,7 @@ async def tip_loop():
         if channel:
             await channel.send(random.choice(tips))
 
-        await asyncio.sleep(1800)  # 30 minutes
+        await asyncio.sleep(1800)
 
 # =====================
 # READY EVENT
@@ -100,8 +99,7 @@ async def on_ready():
 # =====================
 @tree.command(name="balance", description="Check BurgerCash", guild=guild)
 async def balance(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    user = get_user(user_id)
+    user = get_user(str(interaction.user.id))
 
     await interaction.response.send_message(
         f"🍔 **BurgerCash Balance**\n"
@@ -125,7 +123,6 @@ async def deposit(interaction: discord.Interaction, amount: int):
 
     user["wallet"] -= amount
     user["bank"] += amount
-
     update_user(user_id, user["wallet"], user["bank"])
 
     await interaction.response.send_message(f"🏦 Deposited {amount} BC!")
@@ -146,7 +143,6 @@ async def withdraw(interaction: discord.Interaction, amount: int):
 
     user["bank"] -= amount
     user["wallet"] += amount
-
     update_user(user_id, user["wallet"], user["bank"])
 
     await interaction.response.send_message(f"💰 Withdrew {amount} BC!")
