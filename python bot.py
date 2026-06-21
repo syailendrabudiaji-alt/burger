@@ -6,12 +6,14 @@ import os
 from discord import app_commands
 
 # =====================
-# CONFIG (SAFE)
+# CONFIG
 # =====================
 TOKEN = os.getenv("TOKEN")
-
 GUILD_ID = 1499402690957152338
 TIP_CHANNEL_ID = 1499407906213335070
+
+if not TOKEN:
+    raise ValueError("TOKEN environment variable not found!")
 
 # =====================
 # DISCORD SETUP
@@ -20,8 +22,9 @@ intents = discord.Intents.default()
 
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
-
 guild = discord.Object(id=GUILD_ID)
+
+tips_started = False
 
 # =====================
 # SQLITE SETUP
@@ -32,8 +35,8 @@ cursor = conn.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
-    wallet INTEGER,
-    bank INTEGER
+    wallet INTEGER DEFAULT 0,
+    bank INTEGER DEFAULT 0
 )
 """)
 conn.commit()
@@ -42,18 +45,22 @@ conn.commit()
 # DATABASE FUNCTIONS
 # =====================
 def get_user(user_id):
-    cursor.execute("SELECT wallet, bank FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute(
+        "SELECT wallet, bank FROM users WHERE user_id = ?",
+        (user_id,)
+    )
     data = cursor.fetchone()
 
     if data is None:
         cursor.execute(
-            "INSERT INTO users VALUES (?, ?, ?)",
+            "INSERT INTO users (user_id, wallet, bank) VALUES (?, ?, ?)",
             (user_id, 0, 0)
         )
         conn.commit()
         return {"wallet": 0, "bank": 0}
 
     return {"wallet": data[0], "bank": data[1]}
+
 
 def update_user(user_id, wallet, bank):
     cursor.execute("""
@@ -67,20 +74,22 @@ def update_user(user_id, wallet, bank):
 # TIPS SYSTEM
 # =====================
 tips = [
-    "🍔 Tip : Save money in your bank to protect it !",
-    "💰 Tip : Check /shop for items !",
-    "⚡ Tip : Use /work to earn money !",
-    "🏆 Tip : Climb the leaderboard !"
+    "🍔 Tip: Save money in your bank to protect it!",
+    "💰 Tip: Check /shop for items!",
+    "⚡ Tip: Use /work to earn money!",
+    "🏆 Tip: Climb the leaderboard!"
 ]
 
 async def tip_loop():
     await bot.wait_until_ready()
 
-    channel = bot.get_channel(TIP_CHANNEL_ID)
-
     while not bot.is_closed():
+        channel = bot.get_channel(TIP_CHANNEL_ID)
+
         if channel:
             await channel.send(random.choice(tips))
+        else:
+            print("Tip channel not found!")
 
         await asyncio.sleep(1800)
 
@@ -89,14 +98,22 @@ async def tip_loop():
 # =====================
 @bot.event
 async def on_ready():
+    global tips_started
+
     await tree.sync(guild=guild)
     print(f"Logged in as {bot.user}")
 
-    bot.loop.create_task(tip_loop())
+    if not tips_started:
+        bot.loop.create_task(tip_loop())
+        tips_started = True
 
 # =====================
-# BALANCE
+# COMMANDS
 # =====================
+@tree.command(name="ping", description="Test bot", guild=guild)
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("🏓 Pong!")
+
 @tree.command(name="balance", description="Check BurgerCash", guild=guild)
 async def balance(interaction: discord.Interaction):
     user = get_user(str(interaction.user.id))
@@ -107,9 +124,6 @@ async def balance(interaction: discord.Interaction):
         f"🏦 Bank: {user['bank']} BC"
     )
 
-# =====================
-# DEPOSIT
-# =====================
 @tree.command(name="deposit", description="Deposit money", guild=guild)
 async def deposit(interaction: discord.Interaction, amount: int):
     user_id = str(interaction.user.id)
@@ -123,13 +137,11 @@ async def deposit(interaction: discord.Interaction, amount: int):
 
     user["wallet"] -= amount
     user["bank"] += amount
+
     update_user(user_id, user["wallet"], user["bank"])
 
     await interaction.response.send_message(f"🏦 Deposited {amount} BC!")
 
-# =====================
-# WITHDRAW
-# =====================
 @tree.command(name="withdraw", description="Withdraw money", guild=guild)
 async def withdraw(interaction: discord.Interaction, amount: int):
     user_id = str(interaction.user.id)
@@ -143,18 +155,12 @@ async def withdraw(interaction: discord.Interaction, amount: int):
 
     user["bank"] -= amount
     user["wallet"] += amount
+
     update_user(user_id, user["wallet"], user["bank"])
 
     await interaction.response.send_message(f"💰 Withdrew {amount} BC!")
 
 # =====================
-# PING
-# =====================
-@tree.command(name="ping", description="Test bot", guild=guild)
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("🏓 Pong!")
-
-# =====================
-# RUN BOT
+# RUN
 # =====================
 bot.run(TOKEN)
