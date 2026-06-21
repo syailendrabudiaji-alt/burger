@@ -8,7 +8,6 @@ from discord import app_commands
 # =====================
 # CONFIG
 # =====================
-
 TOKEN = os.getenv("TOKEN")
 GUILD_ID = 1499402690957152338
 TIP_CHANNEL_ID = 1499407906213335070
@@ -19,9 +18,7 @@ if not TOKEN:
 # =====================
 # DISCORD SETUP
 # =====================
-
 intents = discord.Intents.default()
-intents.guilds = True
 
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
@@ -32,7 +29,6 @@ tips_started = False
 # =====================
 # SQLITE SETUP
 # =====================
-
 conn = sqlite3.connect("economy.db")
 cursor = conn.cursor()
 
@@ -48,7 +44,6 @@ conn.commit()
 # =====================
 # DATABASE FUNCTIONS
 # =====================
-
 def get_user(user_id):
     cursor.execute(
         "SELECT wallet, bank FROM users WHERE user_id = ?",
@@ -69,14 +64,103 @@ def get_user(user_id):
 
 def update_user(user_id, wallet, bank):
     cursor.execute("""
-    UPDATE users SET wallet = ?, bank = ? WHERE user_id = ?
+    UPDATE users
+    SET wallet = ?, bank = ?
+    WHERE user_id = ?
     """, (wallet, bank, user_id))
     conn.commit()
 
 # =====================
 # TIPS SYSTEM
 # =====================
-
 tips = [
     "🍔 Tip: Save money in your bank to protect it!",
-    "💰 Tip
+    "💰 Tip: Check /shop for items!",
+    "⚡ Tip: Use /work to earn money!",
+    "🏆 Tip: Climb the leaderboard!"
+]
+
+async def tip_loop():
+    await bot.wait_until_ready()
+
+    while not bot.is_closed():
+        channel = bot.get_channel(TIP_CHANNEL_ID)
+
+        if channel:
+            await channel.send(random.choice(tips))
+        else:
+            print("Tip channel not found!")
+
+        await asyncio.sleep(1800)
+
+# =====================
+# READY EVENT
+# =====================
+@bot.event
+async def on_ready():
+    global tips_started
+
+    await tree.sync(guild=guild)
+    print(f"Logged in as {bot.user}")
+
+    if not tips_started:
+        bot.loop.create_task(tip_loop())
+        tips_started = True
+
+# =====================
+# COMMANDS
+# =====================
+@tree.command(name="ping", description="Test bot", guild=guild)
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("🏓 Pong!")
+
+@tree.command(name="balance", description="Check BurgerCash", guild=guild)
+async def balance(interaction: discord.Interaction):
+    user = get_user(str(interaction.user.id))
+
+    await interaction.response.send_message(
+        f"🍔 **BurgerCash Balance**\n"
+        f"💰 Wallet: {user['wallet']} BC\n"
+        f"🏦 Bank: {user['bank']} BC"
+    )
+
+@tree.command(name="deposit", description="Deposit money", guild=guild)
+async def deposit(interaction: discord.Interaction, amount: int):
+    user_id = str(interaction.user.id)
+    user = get_user(user_id)
+
+    if amount <= 0:
+        return await interaction.response.send_message("❌ Invalid amount")
+
+    if user["wallet"] < amount:
+        return await interaction.response.send_message("❌ Not enough wallet money")
+
+    user["wallet"] -= amount
+    user["bank"] += amount
+
+    update_user(user_id, user["wallet"], user["bank"])
+
+    await interaction.response.send_message(f"🏦 Deposited {amount} BC!")
+
+@tree.command(name="withdraw", description="Withdraw money", guild=guild)
+async def withdraw(interaction: discord.Interaction, amount: int):
+    user_id = str(interaction.user.id)
+    user = get_user(user_id)
+
+    if amount <= 0:
+        return await interaction.response.send_message("❌ Invalid amount")
+
+    if user["bank"] < amount:
+        return await interaction.response.send_message("❌ Not enough bank money")
+
+    user["bank"] -= amount
+    user["wallet"] += amount
+
+    update_user(user_id, user["wallet"], user["bank"])
+
+    await interaction.response.send_message(f"💰 Withdrew {amount} BC!")
+
+# =====================
+# RUN
+# =====================
+bot.run(TOKEN)
