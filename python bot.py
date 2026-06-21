@@ -67,10 +67,10 @@ def update_user(user_id, wallet, bank):
 # TIPS SYSTEM
 # =====================
 tips = [
-    "🍔 Tip : Save money in your bank to protect it!",
-    "💰 Tip : Check /shop for items!",
-    "⚡ Tip : Use /work to earn money!",
-    "🏆 Tip : Climb the leaderboard!"
+    "🍔 Tip : Save money in your bank to protect it !",
+    "💰 Tip : Check /shop for items !",
+    "⚡ Tip : Use /work to earn money !",
+    "🏆 Tip : Climb the leaderboard !"
 ]
 
 async def tip_loop():
