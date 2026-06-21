@@ -180,19 +180,18 @@ async def withdraw(interaction: discord.Interaction, amount: int):
 
     await interaction.response.send_message(f"💰 Withdrew {amount} BC!")
 
-@tree.command(name="fish", description="Go fishing and earn BurgerCash!", guild=guild)
+@tree.command(name="fish", description="Open fishing menu", guild=guild)
 async def fish(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    user = get_user(user_id)
 
-    reward = random.randint(10, 30)
-
-    user["wallet"] += reward
-    update_user(user_id, user["wallet"], user["bank"])
+    embed = discord.Embed(
+        title="🎣 Fishing Area",
+        description="Press the button below to fish!",
+        color=0x00ff99
+    )
 
     await interaction.response.send_message(
-        f"🎣 You went fishing!\n"
-        f"💰 You earned **{reward} BC**!"
+        embed=embed,
+        view=FishView()
     )
 
 # =====================
