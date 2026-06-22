@@ -294,11 +294,27 @@ async def ping(interaction: discord.Interaction):
 async def balance(interaction: discord.Interaction):
     user = get_user(str(interaction.user.id))
 
-    await interaction.response.send_message(
-        f"🍔 **BurgerCash Balance**\n"
-        f"💰 Wallet: {user['wallet']} BC\n"
-        f"🏦 Bank: {user['bank']} BC"
+    embed = discord.Embed(
+        title="🏦 BurgerCash Bank",
+        color=0x00ff99
     )
+
+    embed.add_field(
+        name="💰 Wallet",
+        value=f"{user['wallet']} BC",
+        inline=True
+    )
+
+    embed.add_field(
+        name="🏦 Bank",
+        value=f"{user['bank']} BC",
+        inline=True
+    )
+
+    embed.set_footer(text=f"Requested by {interaction.user}")
+
+    await interaction.response.send_message(embed=embed)
+
 
 @tree.command(name="deposit", description="Deposit money", guild=guild)
 async def deposit(interaction: discord.Interaction, amount: int):
@@ -306,17 +322,36 @@ async def deposit(interaction: discord.Interaction, amount: int):
     user = get_user(user_id)
 
     if amount <= 0:
-        return await interaction.response.send_message("❌ Invalid amount")
+        embed = discord.Embed(
+            title="❌ Error",
+            description="Amount must be greater than 0.",
+            color=0xff0000
+        )
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
 
     if user["wallet"] < amount:
-        return await interaction.response.send_message("❌ Not enough wallet money")
+        embed = discord.Embed(
+            title="❌ Error",
+            description="Not enough money in wallet.",
+            color=0xff0000
+        )
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
 
     user["wallet"] -= amount
     user["bank"] += amount
-
     update_user(user_id, user["wallet"], user["bank"])
 
-    await interaction.response.send_message(f"🏦 Deposited {amount} BC!")
+    embed = discord.Embed(
+        title="🏦 Deposit Successful",
+        description=f"You deposited **{amount} BC**",
+        color=0x00ff99
+    )
+
+    embed.add_field(name="💰 Wallet", value=f"{user['wallet']} BC")
+    embed.add_field(name="🏦 Bank", value=f"{user['bank']} BC")
+
+    await interaction.response.send_message(embed=embed)
+
 
 @tree.command(name="withdraw", description="Withdraw money", guild=guild)
 async def withdraw(interaction: discord.Interaction, amount: int):
@@ -324,17 +359,35 @@ async def withdraw(interaction: discord.Interaction, amount: int):
     user = get_user(user_id)
 
     if amount <= 0:
-        return await interaction.response.send_message("❌ Invalid amount")
+        embed = discord.Embed(
+            title="❌ Error",
+            description="Amount must be greater than 0.",
+            color=0xff0000
+        )
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
 
     if user["bank"] < amount:
-        return await interaction.response.send_message("❌ Not enough bank money")
+        embed = discord.Embed(
+            title="❌ Error",
+            description="Not enough money in bank.",
+            color=0xff0000
+        )
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
 
     user["bank"] -= amount
     user["wallet"] += amount
-
     update_user(user_id, user["wallet"], user["bank"])
 
-    await interaction.response.send_message(f"💰 Withdrew {amount} BC!")
+    embed = discord.Embed(
+        title="💸 Withdrawal Successful",
+        description=f"You withdrew **{amount} BC**",
+        color=0x00ff99
+    )
+
+    embed.add_field(name="💰 Wallet", value=f"{user['wallet']} BC")
+    embed.add_field(name="🏦 Bank", value=f"{user['bank']} BC")
+
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="addcash", description="Add BurgerCash to a member", guild=guild)
 async def addcash(
