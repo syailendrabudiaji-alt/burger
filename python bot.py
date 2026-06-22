@@ -180,6 +180,46 @@ async def withdraw(interaction: discord.Interaction, amount: int):
 
     await interaction.response.send_message(f"💰 Withdrew {amount} BC!")
 
+@tree.command(name="addcash", description="Add BurgerCash to a member", guild=guild)
+async def addcash(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    amount: int
+):
+    # Put allowed role IDs here
+    ALLOWED_ROLE_IDS = [
+        149999999999999999,  # Owner role ID
+        148888888888888888   # Admin role ID
+    ]
+
+    # Check user roles
+    user_role_ids = [role.id for role in interaction.user.roles]
+
+    if not any(role_id in ALLOWED_ROLE_IDS for role_id in user_role_ids):
+        return await interaction.response.send_message(
+            "❌ You don't have permission to use this command.",
+            ephemeral=True
+        )
+
+    # Check amount
+    if amount <= 0:
+        return await interaction.response.send_message(
+            "❌ Amount must be more than 0.",
+            ephemeral=True
+        )
+
+    # Get user data
+    user_id = str(member.id)
+    user = get_user(user_id)
+
+    # Add cash
+    user["wallet"] += amount
+    update_user(user_id, user["wallet"], user["bank"])
+
+    await interaction.response.send_message(
+        f"💰 Added **{amount} BC** to {member.mention}'s wallet!"
+    )
+
 @tree.command(name="fish", description="Open fishing menu", guild=guild)
 async def fish(interaction: discord.Interaction):
 
