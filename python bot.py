@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 conn.commit()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS inventory (
+    user_id TEXT,
+    item TEXT
+)
+""")
+conn.commit()
+
 # =====================
 # DATABASE FUNCTIONS
 # =====================
@@ -89,6 +97,13 @@ def update_user(user_id, wallet, bank):
     WHERE user_id = ?
     """, (wallet, bank, user_id))
     conn.commit()
+
+def get_inventory(user_id):
+    cursor.execute(
+        "SELECT item FROM inventory WHERE user_id = ?",
+        (user_id,)
+    )
+    return [row[0] for row in cursor.fetchall()]
 
 # =====================
 # TIPS SYSTEM
@@ -234,6 +249,38 @@ async def fish(interaction: discord.Interaction):
         embed=embed,
         view=FishView()
     )
+
+@tree.command(name="shop", description="View shop items", guild=guild)
+async def shop(interaction: discord.Interaction):
+
+    embed = discord.Embed(
+        title="🛒 BurgerCash Shop",
+        description="Buy items using your BurgerCash!",
+        color=0x00ff99
+    )
+
+    embed.add_field(name="🎣 Fishing Rod", value="500 BC", inline=False)
+    embed.add_field(name="💎 Lucky Charm", value="1000 BC", inline=False)
+    embed.add_field(name="🏦 Bank Upgrade", value="2000 BC", inline=False)
+
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="inventory", description="Check your items", guild=guild)
+async def inventory(interaction: discord.Interaction):
+
+    user_id = str(interaction.user.id)
+    items = get_inventory(user_id)
+
+    if not items:
+        return await interaction.response.send_message("🎒 Your inventory is empty.")
+
+    embed = discord.Embed(
+        title="🎒 Your Inventory",
+        description="\n".join([f"• {item}" for item in items]),
+        color=0x00ff99
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 # =====================
 # RUN
