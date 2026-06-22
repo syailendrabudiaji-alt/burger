@@ -402,7 +402,6 @@ async def shop(interaction: discord.Interaction):
 
     embed.add_field(name="🎣 Fishing Rod", value="500 BC", inline=False)
     embed.add_field(name="💎 Lucky Charm", value="1000 BC", inline=False)
-    embed.add_field(name="🏦 Bank Upgrade", value="2000 BC", inline=False)
 
     await interaction.response.send_message(embed=embed, view=ShopView())
 
