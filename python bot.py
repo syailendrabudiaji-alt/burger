@@ -105,6 +105,21 @@ def get_inventory(user_id):
     )
     return [row[0] for row in cursor.fetchall()]
 
+def get_inventory(user_id):
+    cursor.execute(
+        "SELECT item FROM inventory WHERE user_id = ?",
+        (user_id,)
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
+def add_item(user_id, item):
+    cursor.execute(
+        "INSERT INTO inventory (user_id, item) VALUES (?, ?)",
+        (user_id, item)
+    )
+    conn.commit()
+
 # =====================
 # TIPS SYSTEM
 # =====================
@@ -141,6 +156,65 @@ async def on_ready():
     if not tips_started:
         bot.loop.create_task(tip_loop())
         tips_started = True
+
+# =====================
+# UI SYSTEMS
+# =====================
+
+class ShopView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎣 Fishing Rod - 500 BC", style=discord.ButtonStyle.green)
+    async def rod(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        user_id = str(interaction.user.id)
+        user = get_user(user_id)
+
+        if user["wallet"] < 500:
+            return await interaction.response.send_message("❌ Not enough BC", ephemeral=True)
+
+        user["wallet"] -= 500
+        update_user(user_id, user["wallet"], user["bank"])
+
+        add_item(user_id, "Fishing Rod")
+
+        await interaction.response.send_message("🎣 You bought Fishing Rod!", ephemeral=True)
+
+
+    @discord.ui.button(label="💎 Lucky Charm - 1000 BC", style=discord.ButtonStyle.blurple)
+    async def charm(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        user_id = str(interaction.user.id)
+        user = get_user(user_id)
+
+        if user["wallet"] < 1000:
+            return await interaction.response.send_message("❌ Not enough BC", ephemeral=True)
+
+        user["wallet"] -= 1000
+        update_user(user_id, user["wallet"], user["bank"])
+
+        add_item(user_id, "Lucky Charm")
+
+        await interaction.response.send_message("💎 You bought Lucky Charm!", ephemeral=True)
+
+class InventoryView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎒 Show Items", style=discord.ButtonStyle.gray)
+    async def show(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        user_id = str(interaction.user.id)
+        items = get_inventory(user_id)
+
+        if not items:
+            return await interaction.response.send_message("🎒 Empty inventory", ephemeral=True)
+
+        await interaction.response.send_message(
+            "🎒 Your Items:\n" + "\n".join([f"• {i}" for i in items]),
+            ephemeral=True
+        )
 
 # =====================
 # COMMANDS
@@ -250,14 +324,16 @@ async def fish(interaction: discord.Interaction):
         view=FishView()
     )
 
-@tree.command(name="shop", description="View shop items", guild=guild)
+@tree.command(name="shop", description="Open shop", guild=guild)
 async def shop(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="🛒 BurgerCash Shop",
-        description="Buy items using your BurgerCash!",
+        description="Click buttons to buy items!",
         color=0x00ff99
     )
+
+    await interaction.response.send_message(embed=embed, view=ShopView())
 
     embed.add_field(name="🎣 Fishing Rod", value="500 BC", inline=False)
     embed.add_field(name="💎 Lucky Charm", value="1000 BC", inline=False)
@@ -265,22 +341,16 @@ async def shop(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-@tree.command(name="inventory", description="Check your items", guild=guild)
+@tree.command(name="inventory", description="Open inventory", guild=guild)
 async def inventory(interaction: discord.Interaction):
 
-    user_id = str(interaction.user.id)
-    items = get_inventory(user_id)
-
-    if not items:
-        return await interaction.response.send_message("🎒 Your inventory is empty.")
-
     embed = discord.Embed(
-        title="🎒 Your Inventory",
-        description="\n".join([f"• {item}" for item in items]),
+        title="🎒 Inventory",
+        description="Click button to view items",
         color=0x00ff99
     )
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, view=InventoryView())
 
 # =====================
 # RUN
