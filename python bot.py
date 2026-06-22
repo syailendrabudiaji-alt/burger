@@ -443,9 +443,8 @@ async def work(interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         current_time = asyncio.get_event_loop().time()
 
-        cooldown_time = 7200  # 2 hours
+        cooldown_time = 7200
 
-        # cooldown check
         if user_id in work_cooldown:
             time_left = work_cooldown[user_id] - current_time
 
@@ -464,18 +463,22 @@ async def work(interaction: discord.Interaction):
 
         job = get_job(user_id)
 
-if job not in JOBS:
-    return await interaction.response.send_message(
-        "❌ Job not found in system. Please use /joblist again.",
-        ephemeral=True
-    )
+        if not job:
+            return await interaction.response.send_message(
+                "❌ You don't have a job yet. Use /joblist",
+                ephemeral=True
+            )
 
-min_pay, max_pay = JOBS[job]
-            
+        if job not in JOBS:
+            return await interaction.response.send_message(
+                "❌ Job not found in system. Please use /joblist again.",
+                ephemeral=True
+            )
+
+        min_pay, max_pay = JOBS[job]
 
         work_cooldown[user_id] = current_time + cooldown_time
 
-        min_pay, max_pay = JOBS[job]
         reward = random.randint(min_pay, max_pay)
 
         user = get_user(user_id)
