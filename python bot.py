@@ -3,6 +3,7 @@ import time
 import asyncio
 import random
 import sqlite3
+import json
 import os
 from discord import app_commands
 
@@ -95,6 +96,31 @@ CREATE TABLE IF NOT EXISTS jobs (
 conn.commit()
 
 # =====================
+# BACKUP SYSTEMS
+# =====================
+
+BACKUP_FILE = "economy_backup.json"
+
+def load_backup():
+    if not os.path.exists(BACKUP_FILE):
+        return {}
+
+    with open(BACKUP_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_backup(user_id, wallet, bank):
+    data = load_backup()
+
+    data[user_id] = {
+        "wallet": wallet,
+        "bank": bank
+    }
+
+    with open(BACKUP_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+# =====================
 # DATABASE FUNCTIONS
 # =====================
 def get_user(user_id):
@@ -105,15 +131,24 @@ def get_user(user_id):
     data = cursor.fetchone()
 
     if data is None:
+        backup = load_backup()
+
+        if user_id in backup:
+            wallet = backup[user_id]["wallet"]
+            bank = backup[user_id]["bank"]
+        else:
+            wallet = 0
+            bank = 0
+
         cursor.execute(
             "INSERT INTO users (user_id, wallet, bank) VALUES (?, ?, ?)",
-            (user_id, 0, 0)
+            (user_id, wallet, bank)
         )
         conn.commit()
-        return {"wallet": 0, "bank": 0}
+
+        return {"wallet": wallet, "bank": bank}
 
     return {"wallet": data[0], "bank": data[1]}
-
 
 def update_user(user_id, wallet, bank):
     cursor.execute("""
@@ -123,6 +158,7 @@ def update_user(user_id, wallet, bank):
     """, (wallet, bank, user_id))
     conn.commit()
 
+    save_backup(user_id, wallet, bank)
 
 def get_inventory(user_id):
     cursor.execute(
