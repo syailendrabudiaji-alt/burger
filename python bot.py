@@ -47,8 +47,8 @@ JOBS = {
 # GLOBAL VARIABLES
 # =====================
 
-work_cooldown = {60}
-cook_cooldown = {10800}
+work_cooldown = {}
+cook_cooldown = {}
 tips_started = False
 
 # =====================
@@ -122,12 +122,6 @@ def update_user(user_id, wallet, bank):
     """, (wallet, bank, user_id))
     conn.commit()
 
-def get_inventory(user_id):
-    cursor.execute(
-        "SELECT item FROM inventory WHERE user_id = ?",
-        (user_id,)
-    )
-    return [row[0] for row in cursor.fetchall()]
 
 def get_inventory(user_id):
     cursor.execute(
@@ -144,6 +138,7 @@ def add_item(user_id, item):
     )
     conn.commit()
 
+
 def set_job(user_id, job):
     cursor.execute("""
     INSERT INTO jobs (user_id, job)
@@ -155,10 +150,13 @@ def set_job(user_id, job):
 
 
 def get_job(user_id):
-    cursor.execute("SELECT job FROM jobs WHERE user_id = ?", (user_id,))
+    cursor.execute(
+        "SELECT job FROM jobs WHERE user_id = ?",
+        (user_id,)
+    )
     data = cursor.fetchone()
     return data[0] if data else None
-
+    
 # =====================
 # TIPS SYSTEM
 # =====================
@@ -407,7 +405,7 @@ async def shop(interaction: discord.Interaction):
     embed.add_field(name="💎 Lucky Charm", value="1000 BC", inline=False)
     embed.add_field(name="🏦 Bank Upgrade", value="2000 BC", inline=False)
 
-    await interaction.response.send_message(embed=embed)
+await interaction.response.send_message(embed=embed, view=ShopView())
 
 @tree.command(name="inventory", description="Open inventory", guild=guild)
 async def inventory(interaction: discord.Interaction):
@@ -466,11 +464,11 @@ async def work(interaction: discord.Interaction):
 
         job = get_job(user_id)
 
-        if not job:
-            return await interaction.response.send_message(
-                "❌ You don't have a job yet. Use /joblist",
-                ephemeral=True
-            )
+        if job not in JOBS:
+    return await interaction.response.send_message(
+        "❌ Job not found in system. Please use /joblist again.",
+        ephemeral=True
+    )
 
         if job not in JOBS:
     return await interaction.response.send_message(
@@ -479,7 +477,7 @@ async def work(interaction: discord.Interaction):
     )
 
 min_pay, max_pay = JOBS[job]
-            )
+            
 
         work_cooldown[user_id] = current_time + cooldown_time
 
