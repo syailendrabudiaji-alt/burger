@@ -441,59 +441,67 @@ async def joblist(interaction: discord.Interaction):
 @tree.command(name="work", description="Work your job", guild=guild)
 async def work(interaction: discord.Interaction):
 
-    user_id = str(interaction.user.id)
-    current_time = asyncio.get_event_loop().time()
+    try:
+        user_id = str(interaction.user.id)
+        current_time = asyncio.get_event_loop().time()
 
-    cooldown_time = 7200  # 2 hours (change if you want)
+        cooldown_time = 7200  # 2 hours
 
-    # check cooldown
-    if user_id in work_cooldown:
-        time_left = work_cooldown[user_id] - current_time
+        # cooldown check
+        if user_id in work_cooldown:
+            time_left = work_cooldown[user_id] - current_time
 
-        if time_left > 0:
-            hours = int(time_left // 3600)
-            minutes = int((time_left % 3600) // 60)
+            if time_left > 0:
+                hours = int(time_left // 3600)
+                minutes = int((time_left % 3600) // 60)
 
-            embed = discord.Embed(
-                title="😴 You're too tired to work!",
-                description=f"Take a break before working again.",
-                color=0xff5555
+                embed = discord.Embed(
+                    title="😴 You're tired!",
+                    description="You need to rest before working again.",
+                    color=0xff5555
+                )
+                embed.add_field(name="⏳ Time left", value=f"{hours}h {minutes}m")
+
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        job = get_job(user_id)
+
+        if not job:
+            return await interaction.response.send_message(
+                "❌ You don't have a job yet. Use /joblist",
+                ephemeral=True
             )
-            embed.add_field(
-                name="⏳ Time left",
-                value=f"{hours}h {minutes}m"
+
+        if job not in JOBS:
+            return await interaction.response.send_message(
+                "❌ Job data missing. Please reselect job with /joblist",
+                ephemeral=True
             )
 
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
+        work_cooldown[user_id] = current_time + cooldown_time
 
-    # set cooldown
-    work_cooldown[user_id] = current_time + cooldown_time
+        min_pay, max_pay = JOBS[job]
+        reward = random.randint(min_pay, max_pay)
 
-    job = get_job(user_id)
+        user = get_user(user_id)
+        user["wallet"] += reward
+        update_user(user_id, user["wallet"], user["bank"])
 
-    if not job:
-        return await interaction.response.send_message(
-            "❌ You don't have a job yet. Use /joblist",
+        embed = discord.Embed(
+            title="💼 Work Complete",
+            description=f"You worked as **{job}**",
+            color=0x00ff99
+        )
+        embed.add_field(name="💰 Earned", value=f"{reward} BC")
+
+        await interaction.response.send_message(embed=embed)
+
+    except Exception as e:
+        print("WORK ERROR:", e)
+        await interaction.response.send_message(
+            "❌ Something went wrong with /work.",
             ephemeral=True
         )
-
-    min_pay, max_pay = JOBS[job]
-    reward = random.randint(min_pay, max_pay)
-
-    user = get_user(user_id)
-    user["wallet"] += reward
-    update_user(user_id, user["wallet"], user["bank"])
-
-    embed = discord.Embed(
-        title="💼 Work Completed",
-        description=f"You worked as **{job}**",
-        color=0x00ff99
-    )
-
-    embed.add_field(name="💰 Earned", value=f"{reward} BC")
-    embed.add_field(name="😴 Status", value="You feel tired after working...")
-
-    await interaction.response.send_message(embed=embed)
 
 # =====================
 # RUN
