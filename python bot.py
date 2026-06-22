@@ -35,6 +35,14 @@ class FishView(discord.ui.View):
 if not TOKEN:
     raise ValueError("TOKEN environment variable not found!")
 
+JOBS = {
+    "Cashier": (10, 30),
+    "Miner": (20, 60),
+    "Chef": (15, 50),
+    "Delivery": (25, 80),
+    "Programmer": (30, 100)
+}
+
 # =====================
 # DISCORD SETUP
 # =====================
@@ -65,6 +73,14 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS inventory (
     user_id TEXT,
     item TEXT
+)
+""")
+conn.commit()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS jobs (
+    user_id TEXT PRIMARY KEY,
+    job TEXT
 )
 """)
 conn.commit()
@@ -119,6 +135,21 @@ def add_item(user_id, item):
         (user_id, item)
     )
     conn.commit()
+
+def set_job(user_id, job):
+    cursor.execute("""
+    INSERT INTO jobs (user_id, job)
+    VALUES (?, ?)
+    ON CONFLICT(user_id)
+    DO UPDATE SET job = excluded.job
+    """, (user_id, job))
+    conn.commit()
+
+
+def get_job(user_id):
+    cursor.execute("SELECT job FROM jobs WHERE user_id = ?", (user_id,))
+    data = cursor.fetchone()
+    return data[0] if data else None
 
 # =====================
 # TIPS SYSTEM
@@ -215,6 +246,35 @@ class InventoryView(discord.ui.View):
             "🎒 Your Items:\n" + "\n".join([f"• {i}" for i in items]),
             ephemeral=True
         )
+
+class JobView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="💼 Cashier", style=discord.ButtonStyle.green)
+    async def cashier(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Cashier")
+        await interaction.response.send_message("💼 You selected Cashier!", ephemeral=True)
+
+    @discord.ui.button(label="⛏️ Miner", style=discord.ButtonStyle.gray)
+    async def miner(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Miner")
+        await interaction.response.send_message("⛏️ You selected Miner!", ephemeral=True)
+
+    @discord.ui.button(label="👨‍🍳 Chef", style=discord.ButtonStyle.blurple)
+    async def chef(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Chef")
+        await interaction.response.send_message("👨‍🍳 You selected Chef!", ephemeral=True)
+
+    @discord.ui.button(label="🚚 Delivery", style=discord.ButtonStyle.green)
+    async def delivery(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Delivery")
+        await interaction.response.send_message("🚚 You selected Delivery!", ephemeral=True)
+
+    @discord.ui.button(label="💻 Programmer", style=discord.ButtonStyle.blurple)
+    async def programmer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Programmer")
+        await interaction.response.send_message("💻 You selected Programmer!", ephemeral=True)
 
 # =====================
 # COMMANDS
@@ -351,6 +411,50 @@ async def inventory(interaction: discord.Interaction):
     )
 
     await interaction.response.send_message(embed=embed, view=InventoryView())
+
+@tree.command(name="joblist", description="Choose your job", guild=guild)
+async def joblist(interaction: discord.Interaction):
+
+    embed = discord.Embed(
+        title="💼 Job Center",
+        description="Pick a job to start working!",
+        color=0x00ff99
+    )
+
+    for job, salary in JOBS.items():
+        embed.add_field(
+            name=job,
+            value=f"💰 {salary[0]} - {salary[1]} BC",
+            inline=False
+        )
+
+    await interaction.response.send_message(embed=embed, view=JobView())
+
+@tree.command(name="work", description="Work your job", guild=guild)
+async def work(interaction: discord.Interaction):
+
+    user_id = str(interaction.user.id)
+
+    job = get_job(user_id)
+
+    if not job:
+        return await interaction.response.send_message("❌ You don't have a job yet. Use /joblist", ephemeral=True)
+
+    min_pay, max_pay = JOBS[job]
+    reward = random.randint(min_pay, max_pay)
+
+    user = get_user(user_id)
+    user["wallet"] += reward
+    update_user(user_id, user["wallet"], user["bank"])
+
+    embed = discord.Embed(
+        title="💼 Work Result",
+        description=f"You worked as **{job}**",
+        color=0x00ff99
+    )
+    embed.add_field(name="💰 Earned", value=f"{reward} BC")
+
+    await interaction.response.send_message(embed=embed)
 
 # =====================
 # RUN
