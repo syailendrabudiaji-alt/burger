@@ -111,7 +111,7 @@ async def tip_loop():
         else:
             print("Tip channel not found!")
 
-        await asyncio.sleep(1800)
+        await asyncio.sleep(5400)
 
 # =====================
 # READY EVENT
