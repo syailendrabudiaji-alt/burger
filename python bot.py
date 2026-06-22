@@ -1,4 +1,5 @@
 import discord
+import time
 import asyncio
 import random
 import sqlite3
@@ -439,9 +440,54 @@ async def work(interaction: discord.Interaction):
 
     try:
         user_id = str(interaction.user.id)
-        current_time = asyncio.get_event_loop().time()
+current_time = time.time()
 
-        cooldown_time = 7200
+cooldown_time = 7200  # 2 hours
+
+# =====================
+# COOLDOWN CHECK
+# =====================
+if user_id in work_cooldown:
+    time_left = work_cooldown[user_id] - current_time
+
+    if time_left > 0:
+        hours = int(time_left // 3600)
+        minutes = int((time_left % 3600) // 60)
+
+        embed = discord.Embed(
+            title="😴 You're tired!",
+            description="You already worked recently. Rest a bit!",
+            color=0xff5555
+        )
+
+        embed.add_field(
+            name="⏳ Time left",
+            value=f"{hours}h {minutes}m"
+        )
+
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# =====================
+# JOB CHECK
+# =====================
+job = get_job(user_id)
+
+if not job:
+    return await interaction.response.send_message(
+        "❌ You don't have a job yet. Use /joblist",
+        ephemeral=True
+    )
+
+if job not in JOBS:
+    return await interaction.response.send_message(
+        "❌ Job not found in system. Please use /joblist again.",
+        ephemeral=True
+    )
+
+# =====================
+# SET COOLDOWN (AFTER WORK SUCCESS)
+# =====================
+work_cooldown[user_id] = current_time + cooldown_time
 
         if user_id in work_cooldown:
             time_left = work_cooldown[user_id] - current_time
