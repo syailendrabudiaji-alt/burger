@@ -464,13 +464,7 @@ async def work(interaction: discord.Interaction):
 
         job = get_job(user_id)
 
-        if job not in JOBS:
-    return await interaction.response.send_message(
-        "❌ Job not found in system. Please use /joblist again.",
-        ephemeral=True
-    )
-
-        if job not in JOBS:
+if job not in JOBS:
     return await interaction.response.send_message(
         "❌ Job not found in system. Please use /joblist again.",
         ephemeral=True
