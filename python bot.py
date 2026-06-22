@@ -44,6 +44,14 @@ JOBS = {
 }
 
 # =====================
+# GLOBAL VARIABLES
+# =====================
+
+work_cooldown = {60}
+cook_cooldown = {10800}
+tips_started = False
+
+# =====================
 # DISCORD SETUP
 # =====================
 intents = discord.Intents.default()
@@ -434,11 +442,40 @@ async def joblist(interaction: discord.Interaction):
 async def work(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
+    current_time = asyncio.get_event_loop().time()
+
+    cooldown_time = 7200  # 2 hours (change if you want)
+
+    # check cooldown
+    if user_id in work_cooldown:
+        time_left = work_cooldown[user_id] - current_time
+
+        if time_left > 0:
+            hours = int(time_left // 3600)
+            minutes = int((time_left % 3600) // 60)
+
+            embed = discord.Embed(
+                title="😴 You're too tired to work!",
+                description=f"Take a break before working again.",
+                color=0xff5555
+            )
+            embed.add_field(
+                name="⏳ Time left",
+                value=f"{hours}h {minutes}m"
+            )
+
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # set cooldown
+    work_cooldown[user_id] = current_time + cooldown_time
 
     job = get_job(user_id)
 
     if not job:
-        return await interaction.response.send_message("❌ You don't have a job yet. Use /joblist", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ You don't have a job yet. Use /joblist",
+            ephemeral=True
+        )
 
     min_pay, max_pay = JOBS[job]
     reward = random.randint(min_pay, max_pay)
@@ -448,11 +485,13 @@ async def work(interaction: discord.Interaction):
     update_user(user_id, user["wallet"], user["bank"])
 
     embed = discord.Embed(
-        title="💼 Work Result",
+        title="💼 Work Completed",
         description=f"You worked as **{job}**",
         color=0x00ff99
     )
+
     embed.add_field(name="💰 Earned", value=f"{reward} BC")
+    embed.add_field(name="😴 Status", value="You feel tired after working...")
 
     await interaction.response.send_message(embed=embed)
 
