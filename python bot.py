@@ -399,13 +399,11 @@ async def shop(interaction: discord.Interaction):
         color=0x00ff99
     )
 
-    await interaction.response.send_message(embed=embed, view=ShopView())
-
     embed.add_field(name="🎣 Fishing Rod", value="500 BC", inline=False)
     embed.add_field(name="💎 Lucky Charm", value="1000 BC", inline=False)
     embed.add_field(name="🏦 Bank Upgrade", value="2000 BC", inline=False)
 
-await interaction.response.send_message(embed=embed, view=ShopView())
+    await interaction.response.send_message(embed=embed, view=ShopView())
 
 @tree.command(name="inventory", description="Open inventory", guild=guild)
 async def inventory(interaction: discord.Interaction):
