@@ -188,8 +188,8 @@ async def addcash(
 ):
     # Put allowed role IDs here
     ALLOWED_ROLE_IDS = [
-        149999999999999999,  # Owner role ID
-        148888888888888888   # Admin role ID
+        1499654765141954700,  # Owner role ID
+        1499656992732483664  # Admin role ID
     ]
 
     # Check user roles
