@@ -473,9 +473,12 @@ async def work(interaction: discord.Interaction):
             )
 
         if job not in JOBS:
-            return await interaction.response.send_message(
-                "❌ Job data missing. Please reselect job with /joblist",
-                ephemeral=True
+    return await interaction.response.send_message(
+        "❌ Job not found in system. Please use /joblist again.",
+        ephemeral=True
+    )
+
+min_pay, max_pay = JOBS[job]
             )
 
         work_cooldown[user_id] = current_time + cooldown_time
