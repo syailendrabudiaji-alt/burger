@@ -39,11 +39,24 @@ if not TOKEN:
     raise ValueError("TOKEN environment variable not found!")
 
 JOBS = {
-    "Cashier": (10, 30),
-    "Miner": (20, 60),
-    "Chef": (15, 50),
-    "Delivery": (25, 80),
-    "Programmer": (30, 100)
+    # 🟢 BEGINNER
+    "Fisherman": (20, 80),
+    "Miner": (25, 100),
+    "Delivery Worker": (30, 90),
+    "Builder": (25, 85),
+
+    # 🟡 MID
+    "Hunter": (50, 150),
+    "Engineer": (60, 180),
+    "Chef": (40, 140),
+
+    # 🔵 ADVANCED
+    "Mechanic": (90, 250),
+    "Electrician": (100, 280),
+    "Deep Miner": (120, 350),
+
+    # 🔴 ENDGAME
+    "Reactor Technician": (200, 600)
 }
 
 # =====================
@@ -195,6 +208,18 @@ def get_job(user_id):
     data = cursor.fetchone()
     return data[0] if data else None
     
+def get_work_reward(user_id):
+
+    job = get_job(user_id)
+
+    if not job:
+        return None, None
+
+    min_pay, max_pay = JOBS[job]
+    reward = random.randint(min_pay, max_pay)
+
+    return job, reward
+
 # =====================
 # TIPS SYSTEM
 # =====================
@@ -319,6 +344,116 @@ class JobView(discord.ui.View):
     async def programmer(self, interaction: discord.Interaction, button: discord.ui.Button):
         set_job(str(interaction.user.id), "Programmer")
         await interaction.response.send_message("💻 You selected Programmer!", ephemeral=True)
+
+class SellItemSelect(discord.ui.Select):
+    def __init__(self, items, user_id):
+
+        options = [
+            discord.SelectOption(label=item, value=item)
+            for item in items[:25]
+        ]
+
+        super().__init__(placeholder="Choose item to sell", options=options)
+
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+
+        item = self.values[0]
+
+        view = SellQuantityView(item, self.user_id)
+
+        embed = discord.Embed(
+            title=f"💰 Selling: {item}",
+            description="Choose quantity to sell",
+            color=0x00ff99
+        )
+
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class SellQuantityView(discord.ui.View):
+
+    def __init__(self, item, user_id):
+        super().__init__()
+        self.item = item
+        self.user_id = user_id
+
+    @discord.ui.button(label="Sell 1", style=discord.ButtonStyle.primary)
+    async def sell_one(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.sell_item(interaction, 1)
+
+    @discord.ui.button(label="Sell 5", style=discord.ButtonStyle.primary)
+    async def sell_five(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.sell_item(interaction, 5)
+
+    @discord.ui.button(label="Sell ALL", style=discord.ButtonStyle.danger)
+    async def sell_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.sell_item(interaction, "all")
+
+    async def sell_item(self, interaction, amount):
+
+        user_id = self.user_id
+        item = self.item
+
+        inventory = get_inventory(user_id)
+
+        count = inventory.count(item)
+
+        if count == 0:
+            return await interaction.response.send_message(
+                "❌ You don't own this item.",
+                ephemeral=True
+            )
+
+        if amount == "all":
+            amount = count
+
+        amount = min(amount, count)
+
+        # 💰 PRICE TABLE (EDIT THIS LATER)
+        price_table = {
+            "Tin Ore": 10,
+            "Gold Ore": 100,
+            "Diamond": 500,
+            "Common Fish": 5,
+            "Rare Fish": 50
+        }
+
+        price = price_table.get(item, 10)
+        total = price * amount
+
+        # remove items
+        for _ in range(amount):
+            inventory.remove(item)
+
+        # rewrite inventory
+        cursor.execute("DELETE FROM inventory WHERE user_id = ?", (user_id,))
+        for i in inventory:
+            cursor.execute(
+                "INSERT INTO inventory (user_id, item) VALUES (?, ?)",
+                (user_id, i)
+            )
+        conn.commit()
+
+        # add money
+        user = get_user(user_id)
+        user["wallet"] += total
+        update_user(user_id, user["wallet"], user["bank"])
+
+        embed = discord.Embed(
+            title="✅ Sale Complete",
+            description=f"Sold **{item} x{amount}**",
+            color=0x00ff99
+        )
+        embed.add_field(name="💰 Earned", value=f"{total} BC")
+
+        await interaction.response.edit_message(embed=embed, view=None)
+
+class SellItemView(discord.ui.View):
+
+    def __init__(self, items, user_id):
+        super().__init__()
+        self.add_item(SellItemSelect(items, user_id))
 
 # =====================
 # COMMANDS
@@ -571,23 +706,40 @@ async def inventory(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-@tree.command(name="joblist", description="Choose your job", guild=guild)
+@tree.command(name="joblist", description="View available jobs", guild=guild)
 async def joblist(interaction: discord.Interaction):
 
     embed = discord.Embed(
-        title="💼 Job Center",
-        description="Pick a job to start working!",
+        title="💼 Job List",
+        description="Choose your career path",
         color=0x00ff99
     )
 
-    for job, salary in JOBS.items():
-        embed.add_field(
-            name=job,
-            value=f"💰 {salary[0]} - {salary[1]} BC",
-            inline=False
-        )
+    embed.add_field(
+        name="🟢 Beginner Jobs",
+        value="🎣 Fisherman\n⛏️ Miner\n🚚 Delivery Worker\n🛠️ Builder",
+        inline=False
+    )
 
-    await interaction.response.send_message(embed=embed, view=JobView())
+    embed.add_field(
+        name="🟡 Mid Jobs",
+        value="🏹 Hunter\n⚡ Engineer\n🍳 Chef",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔵 Advanced Jobs",
+        value="🔧 Mechanic\n⚡ Electrician\n🌋 Deep Miner",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔴 Endgame Jobs",
+        value="☢️ Reactor Technician",
+        inline=False
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="work", description="Work your job", guild=guild)
 async def work(interaction: discord.Interaction):
@@ -627,11 +779,14 @@ async def work(interaction: discord.Interaction):
         # =====================
         job = get_job(user_id)
 
-        if not job:
-            return await interaction.response.send_message(
-                "❌ You don't have a job yet. Use /joblist",
-                ephemeral=True
-            )
+if not job:
+    return await interaction.response.send_message(
+        "❌ You don't have a job yet. Use /joblist",
+        ephemeral=True
+    )
+
+min_pay, max_pay = JOBS[job]
+reward = random.randint(min_pay, max_pay)
 
         if job not in JOBS:
             return await interaction.response.send_message(
@@ -673,6 +828,56 @@ async def work(interaction: discord.Interaction):
             "❌ Something went wrong with /work.",
             ephemeral=True
         )
+
+@tree.command(name="sell", description="Sell your items", guild=guild)
+async def sell(interaction: discord.Interaction):
+
+    user_id = str(interaction.user.id)
+    items = get_inventory(user_id)
+
+    if not items:
+        embed = discord.Embed(
+            title="❌ Empty Inventory",
+            description="You have no items to sell.",
+            color=0xff5555
+        )
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    unique_items = list(set(items))
+
+    view = SellItemView(unique_items, user_id)
+
+    embed = discord.Embed(
+        title="💰 Sell Items",
+        description="Select an item to sell",
+        color=0x00ff99
+    )
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+@tree.command(name="setjob", description="Choose your job", guild=guild)
+async def setjob(interaction: discord.Interaction, job: str):
+
+    user_id = str(interaction.user.id)
+
+    if job not in JOBS:
+        embed = discord.Embed(
+            title="❌ Invalid Job",
+            description="Use /joblist to see available jobs.",
+            color=0xff5555
+        )
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    set_job(user_id, job)
+
+    embed = discord.Embed(
+        title="✅ Job Selected",
+        description=f"You are now a **{job}**",
+        color=0x00ff99
+    )
+
+    await interaction.response.send_message(embed=embed)
+
 # =====================
 # RUN
 # =====================
