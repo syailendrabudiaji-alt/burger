@@ -38,25 +38,49 @@ class FishView(discord.ui.View):
 if not TOKEN:
     raise ValueError("TOKEN environment variable not found!")
 
+# ==============================
+# 🎮 GAME DATA SYSTEM
+# ==============================
+
+# ------------------------------
+# 💼 JOB SYSTEM DATA
+# ------------------------------
 JOBS = {
     # 🟢 BEGINNER
-    "Fisherman": (20, 80),
-    "Miner": (25, 100),
-    "Delivery Worker": (30, 90),
-    "Builder": (25, 85),
+    "Fisherman": {"min": 20, "max": 80},
+    "Miner": {"min": 25, "max": 100},
+    "Delivery Worker": {"min": 30, "max": 90},
+    "Builder": {"min": 25, "max": 85},
 
     # 🟡 MID
-    "Hunter": (50, 150),
-    "Engineer": (60, 180),
-    "Chef": (40, 140),
+    "Hunter": {"min": 50, "max": 150},
+    "Engineer": {"min": 60, "max": 180},
+    "Chef": {"min": 40, "max": 140},
 
     # 🔵 ADVANCED
-    "Mechanic": (90, 250),
-    "Electrician": (100, 280),
-    "Deep Miner": (120, 350),
+    "Mechanic": {"min": 90, "max": 250},
+    "Electrician": {"min": 100, "max": 280},
+    "Deep Miner": {"min": 120, "max": 350},
 
     # 🔴 ENDGAME
-    "Reactor Technician": (200, 600)
+    "Reactor Technician": {"min": 200, "max": 600}
+}
+
+# ------------------------------
+# ⛏️ PICKAXE SYSTEM DATA
+# ------------------------------
+PICKAXE_SHOP = {
+    "Rusty Pickaxe": {"price": 0, "strength": 7},
+    "Copper Pickaxe": {"price": 40, "strength": 12},
+    "Iron Pickaxe": {"price": 500, "strength": 20},
+    "Steel Pickaxe": {"price": 4500, "strength": 35},
+    "Platinum Pickaxe": {"price": 18000, "strength": 60},
+    "Titanium Pickaxe": {"price": 55000, "strength": 100},
+    "Infernum Pickaxe": {"price": 180000, "strength": 200},
+    "Diamond Pickaxe": {"price": 550000, "strength": 400},
+    "Mithril Pickaxe": {"price": 1450000, "strength": 600},
+    "Adamantium Pickaxe": {"price": 3500000, "strength": 800},
+    "Unobtainium Pickaxe": {"price": 7800000, "strength": 1000}
 }
 
 # =====================
@@ -219,6 +243,12 @@ def get_work_reward(user_id):
     reward = random.randint(min_pay, max_pay)
 
     return job, reward
+
+def get_pickaxe_shop_text():
+    return "\n".join(
+        f"⛏️ {name} — ${data['price']:,} | STR {data['strength']}"
+        for name, data in PICKAXE_SHOP.items()
+    )
 
 # =====================
 # TIPS SYSTEM
@@ -616,19 +646,79 @@ async def fish(interaction: discord.Interaction):
         view=FishView()
     )
 
-@tree.command(name="shop", description="Open shop", guild=guild)
+@tree.command(name="shop", description="Official shop", guild=guild)
 async def shop(interaction: discord.Interaction):
 
     embed = discord.Embed(
-        title="🛒 BurgerCash Shop",
-        description="Click buttons to buy items!",
+        title="🛒 Official Shop",
+        description="Buy tools to progress your journey",
         color=0x00ff99
     )
 
-    embed.add_field(name="🎣 Fishing Rod", value="500 BC", inline=False)
-    embed.add_field(name="💎 Lucky Charm", value="1000 BC", inline=False)
+    # ======================
+    # 🎣 FISHING
+    # ======================
+    embed.add_field(
+        name="🎣 Fishing Gear",
+        value="Rod upgrades coming soon...",
+        inline=False
+    )
 
-    await interaction.response.send_message(embed=embed, view=ShopView())
+    # ======================
+    # ⛏️ MINING (PICKAXES)
+    # ======================
+    embed.add_field(
+        name="⛏️ Pickaxes",
+        value=get_pickaxe_shop_text(),
+        inline=False
+    )
+
+    # ======================
+    # 🪏 DIGGING
+    # ======================
+    embed.add_field(
+        name="🪏 Shovels",
+        value="Shovel system coming soon...",
+        inline=False
+    )
+
+    # ======================
+    # 🔫 WEAPONS
+    # ======================
+    embed.add_field(
+        name="🔫 Weapons",
+        value="Hunter weapons coming soon...",
+        inline=False
+    )
+
+    # ======================
+    # ⚡ BOOSTERS
+    # ======================
+    embed.add_field(
+        name="⚡ Boosters",
+        value="Luck / XP boosts coming soon...",
+        inline=False
+    )
+
+    # ======================
+    # 🍳 FOOD
+    # ======================
+    embed.add_field(
+        name="🍳 Food",
+        value="Cooking system coming soon...",
+        inline=False
+    )
+
+    # ======================
+    # 💎 RARE ITEMS
+    # ======================
+    embed.add_field(
+        name="💎 Rare Items",
+        value="Special items coming soon...",
+        inline=False
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="inventory", description="View your inventory", guild=guild)
 async def inventory(interaction: discord.Interaction):
