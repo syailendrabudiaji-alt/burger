@@ -750,7 +750,6 @@ async def work(interaction: discord.Interaction):
 
         user_id = str(interaction.user.id)
         current_time = time.time()
-        cooldown_time = 7200  # 2 hours
 
         # =====================
         # COOLDOWN CHECK
@@ -764,7 +763,7 @@ async def work(interaction: discord.Interaction):
 
                 embed = discord.Embed(
                     title="😴 You're tired!",
-                    description="You already worked recently. Rest a bit!",
+                    description="You already worked recently.",
                     color=0xff5555
                 )
 
@@ -776,7 +775,7 @@ async def work(interaction: discord.Interaction):
                 return await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # =====================
-        # JOB CHECK
+        # JOB CHECK (FIXED INDENT)
         # =====================
         job = get_job(user_id)
 
@@ -788,7 +787,7 @@ async def work(interaction: discord.Interaction):
 
         if job not in JOBS:
             return await interaction.response.send_message(
-                "❌ Job not found in system. Please use /joblist again.",
+                "❌ Job not found in system.",
                 ephemeral=True
             )
 
@@ -803,13 +802,10 @@ async def work(interaction: discord.Interaction):
         update_user(user_id, user["wallet"], user["bank"])
 
         # =====================
-        # SET COOLDOWN
+        # COOLDOWN SET
         # =====================
-        work_cooldown[user_id] = current_time + cooldown_time
+        work_cooldown[user_id] = current_time + 7200
 
-        # =====================
-        # RESPONSE
-        # =====================
         embed = discord.Embed(
             title="💼 Work Complete",
             description=f"You worked as **{job}**",
