@@ -291,46 +291,63 @@ async def on_ready():
 # UI SYSTEMS
 # =====================
 
-class ShopView(discord.ui.View):
+class BurgerShopSelect(discord.ui.Select):
     def __init__(self):
-        super().__init__(timeout=None)
 
-    @discord.ui.button(label="🎣 Fishing Rod - 500 BC", style=discord.ButtonStyle.green)
-    async def rod(self, interaction: discord.Interaction, button: discord.ui.Button):
+        options = [
+            discord.SelectOption(label="⛏️ Pickaxes", value="pickaxes"),
+            discord.SelectOption(label="🪏 Shovels", value="shovels"),
+            discord.SelectOption(label="🔫 Weapons", value="weapons"),
+            discord.SelectOption(label="⚡ Boosters", value="boosters"),
+            discord.SelectOption(label="🍳 Food", value="food"),
+            discord.SelectOption(label="💎 Rare Items", value="rare"),
+        ]
 
-        user_id = str(interaction.user.id)
-        user = get_user(user_id)
+        super().__init__(
+            placeholder="Choose a shop section...",
+            options=options
+        )
 
-        if user["wallet"] < 500:
-            return await interaction.response.send_message("❌ Not enough BC", ephemeral=True)
+    async def callback(self, interaction: discord.Interaction):
 
-        user["wallet"] -= 500
-        update_user(user_id, user["wallet"], user["bank"])
+        section = self.values[0]
 
-        add_item(user_id, "Fishing Rod")
+        if section == "pickaxes":
+            content = get_pickaxe_shop_text()
+            title = "⛏️ Pickaxes"
 
-        await interaction.response.send_message("🎣 You bought Fishing Rod!", ephemeral=True)
+        elif section == "shovels":
+            content = "Shovel system coming soon..."
+            title = "🪏 Shovels"
 
+        elif section == "weapons":
+            content = "Weapons coming soon..."
+            title = "🔫 Weapons"
 
-    @discord.ui.button(label="💎 Lucky Charm - 1000 BC", style=discord.ButtonStyle.blurple)
-    async def charm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        elif section == "boosters":
+            content = "Boosters coming soon..."
+            title = "⚡ Boosters"
 
-        user_id = str(interaction.user.id)
-        user = get_user(user_id)
+        elif section == "food":
+            content = "Food system coming soon..."
+            title = "🍳 Food"
 
-        if user["wallet"] < 1000:
-            return await interaction.response.send_message("❌ Not enough BC", ephemeral=True)
+        else:
+            content = "Rare items coming soon..."
+            title = "💎 Rare Items"
 
-        user["wallet"] -= 1000
-        update_user(user_id, user["wallet"], user["bank"])
+        embed = discord.Embed(
+            title=title,
+            description=content,
+            color=0xffc107
+        )
 
-        add_item(user_id, "Lucky Charm")
+        await interaction.response.edit_message(embed=embed, view=BurgerShopView())
 
-        await interaction.response.send_message("💎 You bought Lucky Charm!", ephemeral=True)
-
-class InventoryView(discord.ui.View):
+class BurgerShopView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__()
+        self.add_item(BurgerShopSelect())
 
     @discord.ui.button(label="🎒 Show Items", style=discord.ButtonStyle.gray)
     async def show(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -646,79 +663,27 @@ async def fish(interaction: discord.Interaction):
         view=FishView()
     )
 
-@tree.command(name="shop", description="Official shop", guild=guild)
+@tree.command(name="shop", description="Burger Shop", guild=guild)
 async def shop(interaction: discord.Interaction):
 
     embed = discord.Embed(
-        title="🛒 Official Shop",
-        description="Buy tools to progress your journey",
-        color=0x00ff99
+        title="🍔 Burger Shop",
+        description="Welcome to the Burger shop",
+        color=0xffc107
     )
 
-    # ======================
-    # 🎣 FISHING
-    # ======================
     embed.add_field(
-        name="🎣 Fishing Gear",
-        value="Rod upgrades coming soon...",
+        name="💬 Description",
+        value="Exchange the cash for items, upgrades, or even something cool!",
         inline=False
     )
 
-    # ======================
-    # ⛏️ MINING (PICKAXES)
-    # ======================
-    embed.add_field(
-        name="⛏️ Pickaxes",
-        value=get_pickaxe_shop_text(),
-        inline=False
-    )
+    # Optional image (replace with your URL)
+    embed.set_image(url="https://cdn.discordapp.com/attachments/1502852484941742131/1518978424792813739/images.jpg?ex=6a3be265&is=6a3a90e5&hm=cd21b5bebde83931edb31671f2a137838e8fbdcea666a4ba8365b410459c2f10&")
 
-    # ======================
-    # 🪏 DIGGING
-    # ======================
-    embed.add_field(
-        name="🪏 Shovels",
-        value="Shovel system coming soon...",
-        inline=False
-    )
+    view = BurgerShopView()
 
-    # ======================
-    # 🔫 WEAPONS
-    # ======================
-    embed.add_field(
-        name="🔫 Weapons",
-        value="Hunter weapons coming soon...",
-        inline=False
-    )
-
-    # ======================
-    # ⚡ BOOSTERS
-    # ======================
-    embed.add_field(
-        name="⚡ Boosters",
-        value="Luck / XP boosts coming soon...",
-        inline=False
-    )
-
-    # ======================
-    # 🍳 FOOD
-    # ======================
-    embed.add_field(
-        name="🍳 Food",
-        value="Cooking system coming soon...",
-        inline=False
-    )
-
-    # ======================
-    # 💎 RARE ITEMS
-    # ======================
-    embed.add_field(
-        name="💎 Rare Items",
-        value="Special items coming soon...",
-        inline=False
-    )
-
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, view=view)
 
 @tree.command(name="inventory", description="View your inventory", guild=guild)
 async def inventory(interaction: discord.Interaction):
