@@ -746,6 +746,7 @@ async def work(interaction: discord.Interaction):
 
     try:
         import time
+        import random
 
         user_id = str(interaction.user.id)
         current_time = time.time()
@@ -779,14 +780,11 @@ async def work(interaction: discord.Interaction):
         # =====================
         job = get_job(user_id)
 
-if not job:
-    return await interaction.response.send_message(
-        "❌ You don't have a job yet. Use /joblist",
-        ephemeral=True
-    )
-
-min_pay, max_pay = JOBS[job]
-reward = random.randint(min_pay, max_pay)
+        if not job:
+            return await interaction.response.send_message(
+                "❌ You don't have a job yet. Use /joblist",
+                ephemeral=True
+            )
 
         if job not in JOBS:
             return await interaction.response.send_message(
