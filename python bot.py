@@ -6,7 +6,7 @@ import sqlite3
 import json
 import os
 from discord import app_commands
-from collections import counter
+from collections import Counter
 
 # =====================
 # CONFIG
