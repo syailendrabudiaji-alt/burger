@@ -6,6 +6,7 @@ import sqlite3
 import json
 import os
 from discord import app_commands
+from collections import counter
 
 # =====================
 # CONFIG
@@ -494,16 +495,81 @@ async def shop(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=ShopView())
 
-@tree.command(name="inventory", description="Open inventory", guild=guild)
+@tree.command(name="inventory", description="View your inventory", guild=guild)
 async def inventory(interaction: discord.Interaction):
 
+    user_id = str(interaction.user.id)
+    items = get_inventory(user_id)
+
+    # 🔹 If empty inventory
+    if not items:
+        embed = discord.Embed(
+            title="🎒 Inventory",
+            description="You currently have no items.",
+            color=0x3498db
+        )
+        await interaction.response.send_message(embed=embed)
+        return
+
+    # 🔹 OPTIONAL: randomize order
+    random.shuffle(items)
+
+    # 🔹 Count items
+    counts = Counter(items)
+
+    # 🔹 Sort into categories (EDIT THIS LIST LATER)
+    fishing_items = []
+    mining_items = []
+    digging_items = []
+    tools_items = []
+    food_items = []
+    misc_items = []
+
+    for item, qty in counts.items():
+
+        line = f"{item} x{qty}"
+
+        # 🎣 Fishing
+        if "Fish" in item:
+            fishing_items.append(line)
+
+        # ⛏️ Mining
+        elif "Ore" in item or "Gem" in item:
+            mining_items.append(line)
+
+        # 🪏 Digging
+        elif "Treasure" in item or "Coin" in item:
+            digging_items.append(line)
+
+        # 🛠️ Tools
+        elif "Rod" in item or "Pickaxe" in item or "Shovel" in item:
+            tools_items.append(line)
+
+        # 🍳 Food
+        elif "Cooked" in item or "Food" in item:
+            food_items.append(line)
+
+        # 📦 Misc
+        else:
+            misc_items.append(line)
+
+    # 🔹 Build embed
     embed = discord.Embed(
-        title="🎒 Inventory",
-        description="Click button to view items",
-        color=0x00ff99
+        title="🎒 Your Inventory",
+        color=0x3498db
     )
 
-    await interaction.response.send_message(embed=embed, view=InventoryView())
+    def format_section(items_list):
+        return "\n".join(items_list) if items_list else "0 items"
+
+    embed.add_field(name="🎣 Fishing Items", value=format_section(fishing_items), inline=False)
+    embed.add_field(name="⛏️ Mining Items", value=format_section(mining_items), inline=False)
+    embed.add_field(name="🪏 Digging Loot", value=format_section(digging_items), inline=False)
+    embed.add_field(name="🛠️ Tools", value=format_section(tools_items), inline=False)
+    embed.add_field(name="🍳 Food", value=format_section(food_items), inline=False)
+    embed.add_field(name="📦 Misc", value=format_section(misc_items), inline=False)
+
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="joblist", description="Choose your job", guild=guild)
 async def joblist(interaction: discord.Interaction):
