@@ -699,3 +699,326 @@ class SellItemView(discord.ui.View):
             SellItemSelect(items, user_id)
         )
 
+# =====================
+# COMMANDS
+# =====================
+
+
+# =====================
+# BASIC COMMANDS
+# =====================
+
+# ---------------------
+# Ping
+# ---------------------
+@tree.command(name="ping", description="Test bot", guild=guild)
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("🏓 Pong!")
+
+
+# =====================
+# BANKING COMMANDS
+# =====================
+
+# ---------------------
+# Balance
+# ---------------------
+@tree.command(name="balance", description="Check BurgerCash", guild=guild)
+async def balance(interaction: discord.Interaction):
+    user = get_user(str(interaction.user.id))
+
+    embed = discord.Embed(title="🏦 BurgerCash Bank", color=0x00ff99)
+    embed.add_field(name="💰 Wallet", value=f"{user['wallet']} BC", inline=True)
+    embed.add_field(name="🏦 Bank", value=f"{user['bank']} BC", inline=True)
+    embed.set_footer(text=f"Requested by {interaction.user}")
+
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------------
+# Deposit
+# ---------------------
+@tree.command(name="deposit", description="Deposit money", guild=guild)
+async def deposit(interaction: discord.Interaction, amount: int):
+    user_id = str(interaction.user.id)
+    user = get_user(user_id)
+
+    if amount <= 0:
+        return await interaction.response.send_message(
+            "❌ Amount must be greater than 0.",
+            ephemeral=True
+        )
+
+    if user["wallet"] < amount:
+        return await interaction.response.send_message(
+            "❌ Not enough money in wallet.",
+            ephemeral=True
+        )
+
+    user["wallet"] -= amount
+    user["bank"] += amount
+    update_user(user_id, user["wallet"], user["bank"])
+
+    await interaction.response.send_message(
+        f"🏦 Deposited **{amount} BC**"
+    )
+
+
+# ---------------------
+# Withdraw
+# ---------------------
+@tree.command(name="withdraw", description="Withdraw money", guild=guild)
+async def withdraw(interaction: discord.Interaction, amount: int):
+    user_id = str(interaction.user.id)
+    user = get_user(user_id)
+
+    if amount <= 0:
+        return await interaction.response.send_message(
+            "❌ Amount must be greater than 0.",
+            ephemeral=True
+        )
+
+    if user["bank"] < amount:
+        return await interaction.response.send_message(
+            "❌ Not enough money in bank.",
+            ephemeral=True
+        )
+
+    user["bank"] -= amount
+    user["wallet"] += amount
+    update_user(user_id, user["wallet"], user["bank"])
+
+    await interaction.response.send_message(
+        f"💸 Withdrew **{amount} BC**"
+    )
+
+
+# ---------------------
+# Add Cash (Admin)
+# ---------------------
+@tree.command(name="addcash", description="Add BurgerCash", guild=guild)
+async def addcash(interaction: discord.Interaction, member: discord.Member, amount: int):
+    ALLOWED_ROLE_IDS = [
+        1499654765141954700,
+        1499656992732483664,
+        1499657562222624848
+    ]
+
+    user_roles = [role.id for role in interaction.user.roles]
+
+    if not any(role in ALLOWED_ROLE_IDS for role in user_roles):
+        return await interaction.response.send_message(
+            "❌ No permission.",
+            ephemeral=True
+        )
+
+    if amount <= 0:
+        return await interaction.response.send_message(
+            "❌ Invalid amount.",
+            ephemeral=True
+        )
+
+    user_id = str(member.id)
+    user = get_user(user_id)
+    user["wallet"] += amount
+    update_user(user_id, user["wallet"], user["bank"])
+
+    await interaction.response.send_message(
+        f"💰 Added {amount} BC to {member.mention}"
+    )
+
+
+# =====================
+# SHOP COMMANDS
+# =====================
+
+# ---------------------
+# Shop
+# ---------------------
+@tree.command(name="shop", description="Burger Shop", guild=guild)
+async def shop(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🍔 Burger Shop",
+        description="Welcome to Burger Shop",
+        color=0xffc107
+    )
+    embed.add_field(
+        name="💬 Description",
+        value="Buy items, upgrades, and more!",
+        inline=False
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        view=BurgerShopView()
+    )
+
+
+# =====================
+# INVENTORY COMMANDS
+# =====================
+
+# ---------------------
+# Inventory
+# ---------------------
+@tree.command(name="inventory", description="View inventory", guild=guild)
+async def inventory(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    items = get_inventory(user_id)
+
+    if not items:
+        return await interaction.response.send_message("🎒 Inventory is empty.")
+
+    counts = Counter(items)
+    text = "\n".join([f"{item} x{qty}" for item, qty in counts.items()])
+
+    embed = discord.Embed(title="🎒 Inventory", description=text, color=0x3498db)
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------------
+# Sell
+# ---------------------
+@tree.command(name="sell", description="Sell items", guild=guild)
+async def sell(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    items = get_inventory(user_id)
+
+    if not items:
+        return await interaction.response.send_message(
+            "❌ Inventory empty.",
+            ephemeral=True
+        )
+
+    unique_items = list(set(items))
+    view = SellItemView(unique_items, user_id)
+
+    embed = discord.Embed(
+        title="💰 Sell Items",
+        description="Select item to sell",
+        color=0x00ff99
+    )
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+# =====================
+# JOB COMMANDS
+# =====================
+
+# ---------------------
+# Job List
+# ---------------------
+@tree.command(name="joblist", description="View jobs", guild=guild)
+async def joblist(interaction: discord.Interaction):
+    embed = discord.Embed(title="💼 Job List", color=0x00ff99)
+    embed.add_field(name="Jobs", value="\n".join(JOBS.keys()), inline=False)
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------------
+# Set Job
+# ---------------------
+@tree.command(name="setjob", description="Choose job", guild=guild)
+async def setjob(interaction: discord.Interaction, job: str):
+    if job not in JOBS:
+        return await interaction.response.send_message(
+            "❌ Invalid job.",
+            ephemeral=True
+        )
+
+    set_job(str(interaction.user.id), job)
+    await interaction.response.send_message(f"✅ Job set to **{job}**")
+
+
+# ---------------------
+# Work
+# ---------------------
+@tree.command(name="work", description="Work your job", guild=guild)
+async def work(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    current_time = time.time()
+
+    if user_id in work_cooldown:
+        remaining = work_cooldown[user_id] - current_time
+        if remaining > 0:
+            return await interaction.response.send_message(
+                f"😴 Cooldown: {int(remaining//60)} mins left",
+                ephemeral=True
+            )
+
+    job = get_job(user_id)
+
+    if not job:
+        return await interaction.response.send_message(
+            "❌ Get a job first.",
+            ephemeral=True
+        )
+
+    min_pay = JOBS[job]["min"]
+    max_pay = JOBS[job]["max"]
+    reward = random.randint(min_pay, max_pay)
+
+    user = get_user(user_id)
+    user["wallet"] += reward
+    update_user(user_id, user["wallet"], user["bank"])
+
+    work_cooldown[user_id] = current_time + 7200
+
+    await interaction.response.send_message(
+        f"💼 Worked as **{job}** and earned **{reward} BC**"
+    )
+
+
+# =====================
+# FISHING COMMANDS
+# =====================
+
+# ---------------------
+# Fish
+# ---------------------
+@tree.command(name="fish", description="Go fishing", guild=guild)
+async def fish_cmd(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    user = get_user(user_id)
+
+    rod_name = "Stick Rod"
+    fishes = fish_with_rod(rod_name)
+
+    fish_prices = {
+        "Common": 20,
+        "Uncommon": 50,
+        "Rare": 100,
+        "Epic": 250,
+        "Legendary": 500,
+        "Mythic": 1000
+    }
+
+    total = 0
+
+    for fish in fishes:
+        add_item(user_id, fish)
+
+        value = 20
+        for rarity, fish_list in FISH.items():
+            if fish in fish_list:
+                value = fish_prices.get(rarity, 20)
+                break
+
+        total += value
+
+    if get_job(user_id) == "Fisherman":
+        total = int(total * 1.2)
+
+    user["wallet"] += total
+    update_user(user_id, user["wallet"], user["bank"])
+
+    await interaction.response.send_message(
+        f"🎣 Caught **{len(fishes)} fish** | 💰 +{total} BC"
+    )
+
+# =====================
+# RUN BOT
+# =====================
+
+bot.run(TOKEN)
