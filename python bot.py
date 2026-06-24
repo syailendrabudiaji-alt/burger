@@ -43,6 +43,52 @@ if not TOKEN:
 # ==============================
 
 # ------------------------------
+# RODS SYSTEM DATA
+# ------------------------------
+RODS = {
+    "Stick Rod": {"min": 1, "max": 2, "rarity": ["Common"], "price": 0},
+    "Rusty Rod": {"min": 2, "max": 3, "rarity": ["Common", "Uncommon"], "price": 50},
+    "Plastic Rod": {"min": 3, "max": 4, "rarity": ["Common", "Uncommon"], "price": 300},
+    "Trainer Rod": {"min": 5, "max": 10, "rarity": ["Common", "Uncommon"], "price": 150},
+
+    "Double Rod": {"min": 6, "max": 8, "rarity": ["Uncommon", "Rare", "Epic"], "price": 2500},
+    "Extended Rod": {"min": 6, "max": 8, "rarity": ["Common", "Rare"], "price": 3500},
+    "Net Rod": {"min": 12, "max": 12, "rarity": "ALL", "price": 7000},
+
+    "Steel Rod": {"min": 14, "max": 14, "rarity": ["Rare", "Epic", "Legendary"], "price": 15000},
+    "Magnet Rod": {"min": 10, "max": 18, "rarity": "ALL", "price": 25000},
+    "Ping Rod": {"min": 10, "max": 14, "rarity": "ALL", "price": 30000},
+    "Pickpocket Rod": {"min": 15, "max": 20, "rarity": "ALL", "price": 40000},
+
+    "Platinum Rod": {"min": 42, "max": 42, "rarity": ["Epic", "Legendary"], "price": 100000},
+    "Portable Rod": {"min": 30, "max": 38, "rarity": ["Epic", "Legendary"], "price": 120000},
+    "Carbon Rod": {"min": 43, "max": 49, "rarity": ["Epic", "Legendary"], "price": 150000},
+    "Distributor Rod": {"min": 42, "max": 42, "rarity": ["Epic", "Legendary"], "price": 200000},
+
+    "Titanium Rod": {"min": 30, "max": 50, "rarity": ["Epic", "Legendary"], "price": 300000},
+    "Diamond Rod": {"min": 50, "max": 60, "rarity": ["Legendary", "Mythic"], "price": 600000},
+
+    "Omni Rod": {"min": 80, "max": 80, "rarity": ["Mythic", "Deepsea", "Abyssal"], "price": 2000000},
+}
+
+FISH = {
+    "Common": ["Sardine", "Anchovy", "Minnow", "Tilapia", "Mudfish"],
+    "Uncommon": ["Catfish", "Mackerel", "Bluegill", "Redfin"],
+    "Rare": ["Salmon", "Tuna", "Trout", "Snapper"],
+    "Epic": ["Swordfish", "Barracuda", "Bluefin Tuna", "King Crab", "Lobster"],
+    "Legendary": ["Blue Marlin", "Whale Shark", "Manta Ray", "Giant Grouper", "Giant Squid"],
+    "Mythic": ["Coelacanth", "Oarfish", "Goblin Shark", "Frilled Shark"],
+    "Deepsea": ["Sunfish", "Colossal Squid", "Japanese Spider Crab", "Viperfish"],
+    "Abyssal": ["Anglerfish", "Fangtooth Fish", "Barreleye Fish", "Giant Isopod"],
+    "Exotic": ["Lionfish", "Napoleon Wrasse", "Ribbonfish", "Electric Eel"],
+}
+
+SPECIAL_FISH = {
+    "King Crab": {"price": (2500000, 5000000), "type": "Secret"},
+    "Burger Lobster": {"price": (1000000, 3000000), "type": "Limited"},
+}
+
+# ------------------------------
 # 💼 JOB SYSTEM DATA
 # ------------------------------
 JOBS = {
@@ -81,6 +127,15 @@ PICKAXE_SHOP = {
     "Mithril Pickaxe": {"price": 1450000, "strength": 600},
     "Adamantium Pickaxe": {"price": 3500000, "strength": 800},
     "Unobtainium Pickaxe": {"price": 7800000, "strength": 1000}
+}
+
+# =====================
+# ABILITIES
+# =====================
+ROD_ABILITIES = {
+    "Distributor Rod": ["auto_sell"],
+    "Magnet Rod": ["bonus_cash"],
+    "Pickpocket Rod": ["steal"],
 }
 
 # =====================
@@ -249,6 +304,65 @@ def get_pickaxe_shop_text():
         f"⛏️ {name} — ${data['price']:,} | STR {data['strength']}"
         for name, data in PICKAXE_SHOP.items()
     )
+
+def get_random_fish(rarity):
+    return random.choice(FISH[rarity])
+
+
+def fish_with_rod(rod_name):
+
+    rod = RODS.get(rod_name, RODS["Stick Rod"])
+
+    count = random.randint(rod["min"], rod["max"])
+    results = []
+
+    for _ in range(count):
+
+        # SPECIAL FISH CHANCE
+        if random.randint(1, 1000) == 1:
+            results.append("King Crab")
+            continue
+
+        if random.randint(1, 800) == 1:
+            results.append("Burger Lobster")
+            continue
+
+        # RARITY PICK
+        if rod["rarity"] == "ALL":
+            rarity = random.choice(list(FISH.keys()))
+        else:
+            rarity = random.choice(rod["rarity"])
+
+        results.append(get_random_fish(rarity))
+
+    return results
+
+def get_user_rod(user_id):
+    return "Stick Rod"  # default for now
+
+def apply_abilities(user, rod_name, fish_list):
+
+    abilities = ROD_ABILITIES.get(rod_name, [])
+
+    # AUTO SELL
+    if "auto_sell" in abilities:
+        for f in fish_list:
+            user["wallet"] += 1000  # placeholder value
+        fish_list.clear()
+
+    # BONUS CASH (Magnet Rod)
+    if "bonus_cash" in abilities:
+        if random.randint(1, 3) == 1:
+            user["wallet"] += 500
+
+    # STEAL (Pickpocket Rod)
+    if "steal" in abilities:
+        if random.randint(1, 5) == 1:
+            user["wallet"] += 2000
+
+    return fish_list
+
+
 
 # =====================
 # TIPS SYSTEM
@@ -926,6 +1040,41 @@ async def setjob(interaction: discord.Interaction, job: str):
     )
 
     await interaction.response.send_message(embed=embed)
+
+@tree.command(name="fish", description="Go fishing!", guild=guild)
+async def fish_cmd(interaction: discord.Interaction):
+
+    user_id = str(interaction.user.id)
+
+    rod_name = get_user_rod(user_id)  # you must store this later
+
+    if rod_name not in RODS:
+        rod_name = "Stick Rod"
+
+    fishes = fish_with_rod(rod_name)
+
+    user = get_user(user_id)
+
+    for f in fishes:
+
+        if f in SPECIAL_FISH:
+            price = random.randint(*SPECIAL_FISH[f]["price"])
+        else:
+            price = {
+                "Common": 10, "Uncommon": 50, "Rare": 200,
+                "Epic": 5000, "Legendary": 50000,
+                "Mythic": 200000, "Deepsea": 400000,
+                "Abyssal": 800000, "Exotic": 1000000
+            }.get("Common", 10)
+
+        user["inventory"].append(f)
+        user["pending_cash"] += price
+
+    update_user(user_id, user)
+
+    await interaction.response.send_message(
+        f"🎣 You caught **{len(fishes)} fish** using {rod_name}!"
+    )
 
 # =====================
 # RUN
