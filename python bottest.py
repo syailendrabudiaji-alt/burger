@@ -151,13 +151,24 @@ conn = sqlite3.connect("economy.db")
 cursor = conn.cursor()
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
-    wallet INTEGER DEFAULT 0,
-    bank INTEGER DEFAULT 0
+CREATE TABLE IF NOT EXISTS inventory (
+    user_id TEXT,
+    item TEXT,
+    amount INTEGER DEFAULT 1,
+    PRIMARY KEY (user_id, item)
 )
 """)
 conn.commit()
+
+# 🔒 SAFE ADD COLUMN CHECK
+cursor.execute("PRAGMA table_info(users)")
+columns = [col[1] for col in cursor.fetchall()]
+
+if "rod" not in columns:
+    cursor.execute("""
+    ALTER TABLE users ADD COLUMN rod TEXT DEFAULT 'Stick Rod'
+    """)
+    conn.commit()
 
 # =====================
 # BACKUP SYSTEMS
@@ -208,60 +219,185 @@ conn.commit()
 # BALANCE FUNCTIONS
 # ---------------------
 def get_user(user_id):
-    pass
+    cursor.execute(
+        "SELECT wallet, bank FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+    data = cursor.fetchone()
+
+    if not data:
+        cursor.execute(
+            "INSERT INTO users (user_id, wallet, bank) VALUES (?, 0, 0)",
+            (user_id,)
+        )
+        conn.commit()
+        return {"wallet": 0, "bank": 0}
+
+    return {"wallet": data[0], "bank": data[1]}
+
 
 def update_user(user_id, wallet, bank):
-    pass
+    cursor.execute("""
+        UPDATE users
+        SET wallet = ?, bank = ?
+        WHERE user_id = ?
+    """, (wallet, bank, user_id))
+    conn.commit()
 
 
 # ---------------------
 # INVENTORY FUNCTIONS
 # ---------------------
+
 def get_inventory(user_id):
-    pass
+    cursor.execute(
+        "SELECT item, amount FROM inventory WHERE user_id = ?",
+        (user_id,)
+    )
+    return cursor.fetchall()
+
 
 def add_item(user_id, item):
-    pass
+    cursor.execute("""
+        INSERT INTO inventory (user_id, item, amount)
+        VALUES (?, ?, 1)
+        ON CONFLICT(user_id, item)
+        DO UPDATE SET amount = amount + 1
+    """, (user_id, item))
 
+    conn.commit()
 
 # ---------------------
 # JOB FUNCTIONS
 # ---------------------
 def set_job(user_id, job):
-    pass
+    cursor.execute("""
+        INSERT INTO jobs (user_id, job)
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET job = excluded.job
+    """, (user_id, job))
+    conn.commit()
+
 
 def get_job(user_id):
-    pass
+    cursor.execute(
+        "SELECT job FROM jobs WHERE user_id = ?",
+        (user_id,)
+    )
+    data = cursor.fetchone()
+    return data[0] if data else None
+
 
 def get_work_reward(user_id):
-    pass
+    job = get_job(user_id)
+
+    if not job or job not in JOBS:
+        return None, 0
+
+    min_pay = JOBS[job]["min"]
+    max_pay = JOBS[job]["max"]
+
+    reward = random.randint(min_pay, max_pay)
+    return job, reward
 
 
 # ---------------------
 # SHOP FUNCTIONS
 # ---------------------
 def get_pickaxe_shop_text():
-    pass
+    return "\n".join(
+        f"⛏️ {name} — {data['price']} BC | STR {data['strength']}"
+        for name, data in PICKAXE_SHOP.items()
+    )
 
 
 # ---------------------
 # FISHING FUNCTIONS
 # ---------------------
 def get_random_fish(rarity):
-    pass
+    fish_list = FISH.get(rarity, ["Trash Fish"])
+    fish = random.choice(fish_list)
+
+    # check special fish override
+    if fish in SPECIAL_FISH:
+        return fish
+
+    return fish
+
 
 def fish_with_rod(rod_name):
-    pass
+    rod = RODS.get(rod_name, RODS["Stick Rod"])
+    luck = rod["luck"]
+
+    roll = random.randint(1, 100)
+
+    # luck improves chance of better fish
+    roll = roll - luck
+
+    if roll <= 45:
+        rarity = "Common"
+    elif roll <= 70:
+        rarity = "Uncommon"
+    elif roll <= 85:
+        rarity = "Rare"
+    elif roll <= 93:
+        rarity = "Epic"
+    elif roll <= 97:
+        rarity = "Legendary"
+    elif roll <= 99:
+        rarity = "Mythic"
+    elif roll <= 99.7:
+        rarity = "Deepsea"
+    else:
+        rarity = "Abyssal"
+
+    fish = get_random_fish(rarity)
+
+    return fish, rarity
+
 
 def get_user_rod(user_id):
-    pass
+    cursor.execute("SELECT rod FROM users WHERE user_id = ?", (user_id,))
+    data = cursor.fetchone()
+
+    if not data:
+        return "Stick Rod"
+
+    return data[0]
+
 
 def apply_abilities(user, rod_name, fish_list):
-    pass
+    abilities = ROD_ABILITIES.get(rod_name, [])
 
+    # AUTO SELL
+    if "auto_sell" in abilities:
+        user["wallet"] += len(fish_list) * 1000
+        fish_list.clear()
+
+    # BONUS CASH
+    if "bonus_cash" in abilities:
+        if random.randint(1, 3) == 1:
+            user["wallet"] += 500
+
+    # STEAL
+    if "steal" in abilities:
+        if random.randint(1, 5) == 1:
+            user["wallet"] += 2000
+
+    return fish_list
+
+def get_fish_value(fish):
+    if fish in SPECIAL_FISH:
+        return random.randint(*SPECIAL_FISH[fish]["price"])
+    return random.randint(10, 5000)
+
+# ---------------------
+# MULTIPLIER SYSTEM
+# ---------------------
 def get_fish_multiplier(job):
-    pass
-
+    if job == "Fisherman":
+        return 1.2
+    return 1.0
 
 # ---------------------
 # MINING FUNCTIONS
@@ -870,10 +1006,34 @@ async def inventory(interaction: discord.Interaction):
     if not items:
         return await interaction.response.send_message("🎒 Inventory is empty.")
 
-    counts = Counter(items)
-    text = "\n".join([f"{item} x{qty}" for item, qty in counts.items()])
+    embed = discord.Embed(title="🎒 Inventory", color=0x3498db)
 
-    embed = discord.Embed(title="🎒 Inventory", description=text, color=0x3498db)
+    # categories
+    fishing = []
+    mining = []
+    tools = []
+    misc = []
+
+    for item, amount in items:
+        line = f"{item} x{amount}"
+
+        if "Fish" in item:
+            fishing.append(line)
+        elif "Ore" in item or "Gem" in item:
+            mining.append(line)
+        elif "Rod" in item or "Pickaxe" in item:
+            tools.append(line)
+        else:
+            misc.append(line)
+
+    def fmt(lst):
+        return "\n".join(lst) if lst else "0 items"
+
+    embed.add_field(name="🎣 Fishing", value=fmt(fishing), inline=False)
+    embed.add_field(name="⛏️ Mining", value=fmt(mining), inline=False)
+    embed.add_field(name="🛠️ Tools", value=fmt(tools), inline=False)
+    embed.add_field(name="📦 Misc", value=fmt(misc), inline=False)
+
     await interaction.response.send_message(embed=embed)
 
 
