@@ -1,1 +1,701 @@
-test
+import discord
+import time
+import asyncio
+import random
+import sqlite3
+import json
+import os
+from discord import app_commands
+from collections import Counter
+
+# =====================
+# CONFIG
+# =====================
+TOKEN = os.getenv("TOKEN")
+GUILD_ID = 1499402690957152338
+TIP_CHANNEL_ID = 1499407906213335070
+
+class FishView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Fish 🎣", style=discord.ButtonStyle.green)
+    async def fish_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        user_id = str(interaction.user.id)
+        user = get_user(user_id)
+
+        reward = random.randint(10, 30)
+
+        user["wallet"] += reward
+        update_user(user_id, user["wallet"], user["bank"])
+
+        await interaction.response.send_message(
+            f"🎣 You caught a fish!\n💰 +{reward} BC",
+            ephemeral=True
+        )
+
+if not TOKEN:
+    raise ValueError("TOKEN environment variable not found!")
+
+# ==============================
+# 🎮 GAME DATA SYSTEM
+# ==============================
+
+# ------------------------------
+# RODS SYSTEM DATA
+# ------------------------------
+RODS = {
+    "Stick Rod": {"min": 1, "max": 2, "rarity": ["Common"], "price": 0},
+    "Rusty Rod": {"min": 2, "max": 3, "rarity": ["Common", "Uncommon"], "price": 50},
+    "Plastic Rod": {"min": 3, "max": 4, "rarity": ["Common", "Uncommon"], "price": 300},
+    "Trainer Rod": {"min": 5, "max": 10, "rarity": ["Common", "Uncommon"], "price": 150},
+
+    "Double Rod": {"min": 6, "max": 8, "rarity": ["Uncommon", "Rare", "Epic"], "price": 2500},
+    "Extended Rod": {"min": 6, "max": 8, "rarity": ["Common", "Rare"], "price": 3500},
+    "Net Rod": {"min": 12, "max": 12, "rarity": "ALL", "price": 7000},
+
+    "Steel Rod": {"min": 14, "max": 14, "rarity": ["Rare", "Epic", "Legendary"], "price": 15000},
+    "Magnet Rod": {"min": 10, "max": 18, "rarity": "ALL", "price": 25000},
+    "Ping Rod": {"min": 10, "max": 14, "rarity": "ALL", "price": 30000},
+    "Pickpocket Rod": {"min": 15, "max": 20, "rarity": "ALL", "price": 40000},
+
+    "Platinum Rod": {"min": 42, "max": 42, "rarity": ["Epic", "Legendary"], "price": 100000},
+    "Portable Rod": {"min": 30, "max": 38, "rarity": ["Epic", "Legendary"], "price": 120000},
+    "Carbon Rod": {"min": 43, "max": 49, "rarity": ["Epic", "Legendary"], "price": 150000},
+    "Distributor Rod": {"min": 42, "max": 42, "rarity": ["Epic", "Legendary"], "price": 200000},
+
+    "Titanium Rod": {"min": 30, "max": 50, "rarity": ["Epic", "Legendary"], "price": 300000},
+    "Diamond Rod": {"min": 50, "max": 60, "rarity": ["Legendary", "Mythic"], "price": 600000},
+
+    "Omni Rod": {"min": 80, "max": 80, "rarity": ["Mythic", "Deepsea", "Abyssal"], "price": 2000000},
+}
+
+FISH = {
+    "Common": ["Sardine", "Anchovy", "Minnow", "Tilapia", "Mudfish"],
+    "Uncommon": ["Catfish", "Mackerel", "Bluegill", "Redfin"],
+    "Rare": ["Salmon", "Tuna", "Trout", "Snapper"],
+    "Epic": ["Swordfish", "Barracuda", "Bluefin Tuna", "King Crab", "Lobster"],
+    "Legendary": ["Blue Marlin", "Whale Shark", "Manta Ray", "Giant Grouper", "Giant Squid"],
+    "Mythic": ["Coelacanth", "Oarfish", "Goblin Shark", "Frilled Shark"],
+    "Deepsea": ["Sunfish", "Colossal Squid", "Japanese Spider Crab", "Viperfish"],
+    "Abyssal": ["Anglerfish", "Fangtooth Fish", "Barreleye Fish", "Giant Isopod"],
+    "Exotic": ["Lionfish", "Napoleon Wrasse", "Ribbonfish", "Electric Eel"],
+}
+
+SPECIAL_FISH = {
+    "King Crab": {"price": (2500000, 5000000), "type": "Secret"},
+    "Burger Lobster": {"price": (1000000, 3000000), "type": "Limited"},
+}
+
+JOBS = {
+    "Fisherman": {"min": 20, "max": 80},
+    "Miner": {"min": 25, "max": 100},
+    "Delivery Worker": {"min": 30, "max": 90},
+    "Builder": {"min": 25, "max": 85},
+    "Hunter": {"min": 50, "max": 150},
+    "Engineer": {"min": 60, "max": 180},
+    "Chef": {"min": 40, "max": 140},
+    "Mechanic": {"min": 90, "max": 250},
+    "Electrician": {"min": 100, "max": 280},
+    "Deep Miner": {"min": 120, "max": 350},
+    "Reactor Technician": {"min": 200, "max": 600}
+}
+
+PICKAXE_SHOP = {
+    "Rusty Pickaxe": {"price": 0, "strength": 7},
+    "Copper Pickaxe": {"price": 40, "strength": 12},
+    "Iron Pickaxe": {"price": 500, "strength": 20},
+    "Steel Pickaxe": {"price": 4500, "strength": 35},
+    "Platinum Pickaxe": {"price": 18000, "strength": 60},
+    "Titanium Pickaxe": {"price": 55000, "strength": 100},
+    "Infernum Pickaxe": {"price": 180000, "strength": 200},
+    "Diamond Pickaxe": {"price": 550000, "strength": 400},
+    "Mithril Pickaxe": {"price": 1450000, "strength": 600},
+    "Adamantium Pickaxe": {"price": 3500000, "strength": 800},
+    "Unobtainium Pickaxe": {"price": 7800000, "strength": 1000}
+}
+
+ROD_ABILITIES = {
+    "Distributor Rod": ["auto_sell"],
+    "Magnet Rod": ["bonus_cash"],
+    "Pickpocket Rod": ["steal"],
+}
+
+# =====================
+# GLOBAL VARIABLES
+# =====================
+
+work_cooldown = {}
+cook_cooldown = {}
+tips_started = False
+
+
+# =====================
+# DISCORD SETUP
+# =====================
+intents = discord.Intents.default()
+
+bot = discord.Client(intents=intents)
+tree = app_commands.CommandTree(bot)
+guild = discord.Object(id=GUILD_ID)
+
+tips_started = False
+
+
+# =====================
+# SQLITE SETUP
+# =====================
+conn = sqlite3.connect("economy.db")
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    wallet INTEGER DEFAULT 0,
+    bank INTEGER DEFAULT 0
+)
+""")
+conn.commit()
+
+# =====================
+# BACKUP SYSTEMS
+# =====================
+
+BACKUP_FILE = "economy_backup.json"
+
+def load_backup():
+    if not os.path.exists(BACKUP_FILE):
+        return {}
+
+    with open(BACKUP_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_backup(user_id, wallet, bank):
+    data = load_backup()
+
+    data[user_id] = {
+        "wallet": wallet,
+        "bank": bank
+    }
+
+    with open(BACKUP_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS inventory (
+    user_id TEXT,
+    item TEXT
+)
+""")
+conn.commit()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS jobs (
+    user_id TEXT PRIMARY KEY,
+    job TEXT
+)
+""")
+conn.commit()
+
+# =====================
+# DATABASE FUNCTIONS
+# =====================
+
+# ---------------------
+# BALANCE FUNCTIONS
+# ---------------------
+def get_user(user_id):
+    pass
+
+def update_user(user_id, wallet, bank):
+    pass
+
+
+# ---------------------
+# INVENTORY FUNCTIONS
+# ---------------------
+def get_inventory(user_id):
+    pass
+
+def add_item(user_id, item):
+    pass
+
+
+# ---------------------
+# JOB FUNCTIONS
+# ---------------------
+def set_job(user_id, job):
+    pass
+
+def get_job(user_id):
+    pass
+
+def get_work_reward(user_id):
+    pass
+
+
+# ---------------------
+# SHOP FUNCTIONS
+# ---------------------
+def get_pickaxe_shop_text():
+    pass
+
+
+# ---------------------
+# FISHING FUNCTIONS
+# ---------------------
+def get_random_fish(rarity):
+    pass
+
+def fish_with_rod(rod_name):
+    pass
+
+def get_user_rod(user_id):
+    pass
+
+def apply_abilities(user, rod_name, fish_list):
+    pass
+
+def get_fish_multiplier(job):
+    pass
+
+
+# ---------------------
+# MINING FUNCTIONS
+# ---------------------
+# future mining functions here
+
+# =====================
+# TIPS SYSTEM
+# =====================
+
+tips = [
+    "🍔 Tip: Save money in your bank to protect it !",
+    "💰 Tip: Check /shop for items !",
+    "⚡ Tip: Use /work to earn money !",
+    "🏆 Tip: Climb the leaderboard !"
+]
+
+async def tip_loop():
+    await bot.wait_until_ready()
+
+    while not bot.is_closed():
+        channel = bot.get_channel(TIP_CHANNEL_ID)
+
+        if channel:
+            await channel.send(random.choice(tips))
+        else:
+            print("Tip channel not found!")
+
+        await asyncio.sleep(10800)  # every 3 hours
+
+# =====================
+# READY EVENT
+# =====================
+@bot.event
+async def on_ready():
+    global tips_started
+
+    await tree.sync(guild=guild)
+    print(f"Logged in as {bot.user}")
+
+    if not tips_started:
+        bot.loop.create_task(tip_loop())
+        tips_started = True
+
+# =====================
+# UI SYSTEMS
+# =====================
+
+# ---------------------
+# SHOP UI
+# ---------------------
+
+class BurgerShopSelect(discord.ui.Select):
+    def __init__(self):
+
+        options = [
+            discord.SelectOption(label="⛏️ Pickaxes", value="pickaxes"),
+            discord.SelectOption(label="🪏 Shovels", value="shovels"),
+            discord.SelectOption(label="🔫 Weapons", value="weapons"),
+            discord.SelectOption(label="⚡ Boosters", value="boosters"),
+            discord.SelectOption(label="🍳 Food", value="food"),
+            discord.SelectOption(label="💎 Rare Items", value="rare"),
+        ]
+
+        super().__init__(
+            placeholder="Choose a shop section...",
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+
+        section = self.values[0]
+
+        if section == "pickaxes":
+            content = get_pickaxe_shop_text()
+            title = "⛏️ Pickaxes"
+
+        elif section == "shovels":
+            content = "Shovel system coming soon..."
+            title = "🪏 Shovels"
+
+        elif section == "weapons":
+            content = "Weapons coming soon..."
+            title = "🔫 Weapons"
+
+        elif section == "boosters":
+            content = "Boosters coming soon..."
+            title = "⚡ Boosters"
+
+        elif section == "food":
+            content = "Food system coming soon..."
+            title = "🍳 Food"
+
+        else:
+            content = "Rare items coming soon..."
+            title = "💎 Rare Items"
+
+        embed = discord.Embed(
+            title=title,
+            description=content,
+            color=0xffc107
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=BurgerShopView()
+        )
+
+
+class BurgerShopView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(BurgerShopSelect())
+
+    @discord.ui.button(
+        label="🎒 Show Items",
+        style=discord.ButtonStyle.gray
+    )
+    async def show(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        user_id = str(interaction.user.id)
+        items = get_inventory(user_id)
+
+        if not items:
+            return await interaction.response.send_message(
+                "🎒 Empty inventory",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "🎒 Your Items:\n" +
+            "\n".join([f"• {i}" for i in items]),
+            ephemeral=True
+        )
+
+# =====================
+# UI SYSTEMS
+# 8.2 JOB UI
+# =====================
+
+class JobView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="💼 Cashier", style=discord.ButtonStyle.green)
+    async def cashier(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Cashier")
+        await interaction.response.send_message(
+            "💼 You selected Cashier!",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="⛏️ Miner", style=discord.ButtonStyle.gray)
+    async def miner(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Miner")
+        await interaction.response.send_message(
+            "⛏️ You selected Miner!",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="👨‍🍳 Chef", style=discord.ButtonStyle.blurple)
+    async def chef(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Chef")
+        await interaction.response.send_message(
+            "👨‍🍳 You selected Chef!",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="🚚 Delivery", style=discord.ButtonStyle.green)
+    async def delivery(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Delivery")
+        await interaction.response.send_message(
+            "🚚 You selected Delivery!",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="💻 Programmer", style=discord.ButtonStyle.blurple)
+    async def programmer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        set_job(str(interaction.user.id), "Programmer")
+        await interaction.response.send_message(
+           
+# =====================
+# CHUNK 8.3 — INVENTORY UI
+# =====================
+
+class InventoryView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="Refresh Inventory", style=discord.ButtonStyle.green)
+    async def refresh_inventory(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        user_id = str(interaction.user.id)
+        items = get_inventory(user_id)
+
+        if not items:
+            embed = discord.Embed(
+                title="🎒 Inventory",
+                description="You currently have no items.",
+                color=0x3498db
+            )
+            return await interaction.response.edit_message(
+                embed=embed,
+                view=self
+            )
+
+        counts = Counter(items)
+
+        fishing_items = []
+        mining_items = []
+        digging_items = []
+        tools_items = []
+        food_items = []
+        misc_items = []
+
+        for item, qty in counts.items():
+            line = f"{item} x{qty}"
+
+            if "Fish" in item:
+                fishing_items.append(line)
+
+            elif "Ore" in item or "Gem" in item:
+                mining_items.append(line)
+
+            elif "Treasure" in item or "Coin" in item:
+                digging_items.append(line)
+
+            elif "Rod" in item or "Pickaxe" in item or "Shovel" in item:
+                tools_items.append(line)
+
+            elif "Cooked" in item or "Food" in item:
+                food_items.append(line)
+
+            else:
+                misc_items.append(line)
+
+        def format_section(items_list):
+            return "\n".join(items_list) if items_list else "0 items"
+
+        embed = discord.Embed(
+            title="🎒 Your Inventory",
+            color=0x3498db
+        )
+
+        embed.add_field(
+            name="🎣 Fishing Items",
+            value=format_section(fishing_items),
+            inline=False
+        )
+        embed.add_field(
+            name="⛏️ Mining Items",
+            value=format_section(mining_items),
+            inline=False
+        )
+        embed.add_field(
+            name="🪏 Digging Loot",
+            value=format_section(digging_items),
+            inline=False
+        )
+        embed.add_field(
+            name="🛠️ Tools",
+            value=format_section(tools_items),
+            inline=False
+        )
+        embed.add_field(
+            name="🍳 Food",
+            value=format_section(food_items),
+            inline=False
+        )
+        embed.add_field(
+            name="📦 Misc",
+            value=format_section(misc_items),
+            inline=False
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=self
+        )
+
+# =====================
+# UI SYSTEMS — INVENTORY / SELL UI
+# Chunk 8.4
+# =====================
+
+class SellItemSelect(discord.ui.Select):
+    def __init__(self, items, user_id):
+        options = [
+            discord.SelectOption(label=item, value=item)
+            for item in items[:25]
+        ]
+
+        super().__init__(
+            placeholder="Choose item to sell",
+            options=options
+        )
+
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        item = self.values[0]
+
+        view = SellQuantityView(item, self.user_id)
+
+        embed = discord.Embed(
+            title=f"💰 Selling: {item}",
+            description="Choose quantity to sell",
+            color=0x00ff99
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=view
+        )
+
+
+class SellQuantityView(discord.ui.View):
+    def __init__(self, item, user_id):
+        super().__init__()
+        self.item = item
+        self.user_id = user_id
+
+    @discord.ui.button(
+        label="Sell 1",
+        style=discord.ButtonStyle.primary
+    )
+    async def sell_one(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await self.sell_item(interaction, 1)
+
+    @discord.ui.button(
+        label="Sell 5",
+        style=discord.ButtonStyle.primary
+    )
+    async def sell_five(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await self.sell_item(interaction, 5)
+
+    @discord.ui.button(
+        label="Sell ALL",
+        style=discord.ButtonStyle.danger
+    )
+    async def sell_all(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await self.sell_item(interaction, "all")
+
+    async def sell_item(self, interaction, amount):
+        user_id = self.user_id
+        item = self.item
+
+        inventory = get_inventory(user_id)
+        count = inventory.count(item)
+
+        if count == 0:
+            return await interaction.response.send_message(
+                "❌ You don't own this item.",
+                ephemeral=True
+            )
+
+        if amount == "all":
+            amount = count
+
+        amount = min(amount, count)
+
+        price_table = {
+            "Tin Ore": 10,
+            "Gold Ore": 100,
+            "Diamond": 500,
+            "Common Fish": 5,
+            "Rare Fish": 50
+        }
+
+        price = price_table.get(item, 10)
+        total = price * amount
+
+        for _ in range(amount):
+            inventory.remove(item)
+
+        cursor.execute(
+            "DELETE FROM inventory WHERE user_id = ?",
+            (user_id,)
+        )
+
+        for i in inventory:
+            cursor.execute(
+                "INSERT INTO inventory (user_id, item) VALUES (?, ?)",
+                (user_id, i)
+            )
+
+        conn.commit()
+
+        user = get_user(user_id)
+        user["wallet"] += total
+        update_user(
+            user_id,
+            user["wallet"],
+            user["bank"]
+        )
+
+        embed = discord.Embed(
+            title="✅ Sale Complete",
+            description=f"Sold **{item} x{amount}**",
+            color=0x00ff99
+        )
+
+        embed.add_field(
+            name="💰 Earned",
+            value=f"{total} BC"
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=None
+        )
+
+
+class SellItemView(discord.ui.View):
+    def __init__(self, items, user_id):
+        super().__init__()
+        self.add_item(
+            SellItemSelect(items, user_id)
+        )
+
