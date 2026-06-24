@@ -260,15 +260,6 @@ def get_inventory(user_id):
     )
     return [row[0] for row in cursor.fetchall()]
 
-
-def add_item(user_id, item):
-    cursor.execute(
-        "INSERT INTO inventory (user_id, item) VALUES (?, ?)",
-        (user_id, item)
-    )
-    conn.commit()
-
-
 def set_job(user_id, job):
     cursor.execute("""
     INSERT INTO jobs (user_id, job)
@@ -310,30 +301,15 @@ def get_random_fish(rarity):
 
 
 def fish_with_rod(rod_name):
-
     rod = RODS.get(rod_name, RODS["Stick Rod"])
 
     count = random.randint(rod["min"], rod["max"])
     results = []
 
     for _ in range(count):
-
-        # SPECIAL FISH CHANCE
-        if random.randint(1, 1000) == 1:
-            results.append("King Crab")
-            continue
-
-        if random.randint(1, 800) == 1:
-            results.append("Burger Lobster")
-            continue
-
-        # RARITY PICK
-        if rod["rarity"] == "ALL":
-            rarity = random.choice(list(FISH.keys()))
-        else:
-            rarity = random.choice(rod["rarity"])
-
-        results.append(get_random_fish(rarity))
+        rarity = random.choice(rod["rarity"])
+        fish = get_random_fish(rarity)
+        results.append(fish["name"])
 
     return results
 
@@ -362,7 +338,30 @@ def apply_abilities(user, rod_name, fish_list):
 
     return fish_list
 
+def get_fish_multiplier(job):
+    if job == "Fisherman":
+        return 1.2
+    return 1.0
 
+# =====================
+# Inventory
+# =====================
+
+def add_item(user_id, item):
+    cursor.execute(
+        "INSERT INTO inventory (user_id, item) VALUES (?, ?)",
+        (user_id, item)
+    )
+    conn.commit()
+
+def add_item(user, item):
+    if "inventory" not in user:
+        user["inventory"] = {}
+
+    if item not in user["inventory"]:
+        user["inventory"][item] = 0
+
+    user["inventory"][item] += 1
 
 # =====================
 # TIPS SYSTEM
@@ -1031,35 +1030,51 @@ async def setjob(interaction: discord.Interaction, job: str):
 async def fish_cmd(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
+    user = get_user(user_id)
 
-    rod_name = get_user_rod(user_id)  # you must store this later
+    if "inventory" not in user:
+        user["inventory"] = {}
 
-    if rod_name not in RODS:
-        rod_name = "Stick Rod"
+    if "wallet" not in user:
+        user["wallet"] = 0
+
+    rod_name = user.get("rod", "Stick Rod")
 
     fishes = fish_with_rod(rod_name)
 
-    user = get_user(user_id)
+    specials = roll_special_fish(
+        rod_name,
+        len(fishes),
+        event_active=False
+    )
+
+    fishes += specials
+
+    total = 0
 
     for f in fishes:
 
         if f in SPECIAL_FISH:
-            price = random.randint(*SPECIAL_FISH[f]["price"])
+            value = SPECIAL_FISH[f]
         else:
-            price = {
-                "Common": 10, "Uncommon": 50, "Rare": 200,
-                "Epic": 5000, "Legendary": 50000,
-                "Mythic": 200000, "Deepsea": 400000,
-                "Abyssal": 800000, "Exotic": 1000000
-            }.get("Common", 10)
+            value = 0
+            for r in FISH:
+                for item in FISH[r]:
+                    if item["name"] == f:
+                        value = item["value"]
 
-        user["inventory"].append(f)
-        user["pending_cash"] += price
+        total += value
+        add_item(user, f)
+
+    if get_job(user_id) == "Fisherman":
+        total = int(total * 1.2)
+
+    user["wallet"] += total
 
     update_user(user_id, user)
 
     await interaction.response.send_message(
-        f"🎣 You caught **{len(fishes)} fish** using {rod_name}!"
+        f"🎣 Caught {len(fishes)} fish | 💰 ${total}"
     )
 
 # =====================
