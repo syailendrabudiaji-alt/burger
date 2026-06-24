@@ -763,20 +763,6 @@ async def addcash(
         f"💰 Added **{amount} BC** to {member.mention}'s wallet!"
     )
 
-@tree.command(name="fish", description="Open fishing menu", guild=guild)
-async def fish(interaction: discord.Interaction):
-
-    embed = discord.Embed(
-        title="🎣 Fishing Area",
-        description="Press the button below to fish!",
-        color=0x00ff99
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        view=FishView()
-    )
-
 @tree.command(name="shop", description="Burger Shop", guild=guild)
 async def shop(interaction: discord.Interaction):
 
