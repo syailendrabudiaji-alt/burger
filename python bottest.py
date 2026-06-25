@@ -150,15 +150,22 @@ tips_started = False
 conn = sqlite3.connect("economy.db")
 cursor = conn.cursor()
 
+# ---------------------
+# USERS TABLE
+# ---------------------
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
     wallet INTEGER DEFAULT 0,
-    bank INTEGER DEFAULT 0
+    bank INTEGER DEFAULT 0,
+    rod TEXT DEFAULT 'Stick Rod'
 )
 """)
 conn.commit()
 
+# ---------------------
+# JOBS TABLE
+# ---------------------
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS jobs (
     user_id TEXT PRIMARY KEY,
@@ -167,20 +174,38 @@ CREATE TABLE IF NOT EXISTS jobs (
 """)
 conn.commit()
 
-# 🔒 SAFE ADD COLUMN CHECK
-cursor.execute("PRAGMA table_info(users)")
+# ---------------------
+# INVENTORY TABLE (FIXED)
+# ---------------------
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS inventory (
+    user_id TEXT,
+    item TEXT,
+    amount INTEGER DEFAULT 1,
+    PRIMARY KEY (user_id, item)
+)
+""")
+conn.commit()
+
+cursor.execute("""
+UPDATE users
+SET rod = 'Stick Rod'
+WHERE rod IS NULL
+""")
+conn.commit()
+
+cursor.execute("PRAGMA table_info(inventory)")
 columns = [col[1] for col in cursor.fetchall()]
 
-if "rod" not in columns:
+if "amount" not in columns:
     cursor.execute("""
-    ALTER TABLE users ADD COLUMN rod TEXT DEFAULT 'Stick Rod'
+    ALTER TABLE inventory ADD COLUMN amount INTEGER DEFAULT 1
     """)
     conn.commit()
 
 # =====================
 # BACKUP SYSTEMS
 # =====================
-
 BACKUP_FILE = "economy_backup.json"
 
 def load_backup():
@@ -201,22 +226,6 @@ def save_backup(user_id, wallet, bank):
 
     with open(BACKUP_FILE, "w") as f:
         json.dump(data, f, indent=4)
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS inventory (
-    user_id TEXT,
-    item TEXT
-)
-""")
-conn.commit()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS jobs (
-    user_id TEXT PRIMARY KEY,
-    job TEXT
-)
-""")
-conn.commit()
 
 # =====================
 # DATABASE FUNCTIONS
@@ -1070,10 +1079,11 @@ async def setjob(interaction: discord.Interaction, job: str):
 async def work(interaction: discord.Interaction):
 
     clean_cooldowns()
-    user_id = str(interaction.user.id)
 
+    user_id = str(interaction.user.id)
     current_time = time.time()
 
+    # cooldown check
     if user_id in work_cooldown:
         remaining = work_cooldown[user_id] - current_time
 
