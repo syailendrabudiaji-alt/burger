@@ -131,6 +131,12 @@ ROD_ABILITIES = {
 work_cooldown = {}
 cook_cooldown = {}
 tips_started = False
+user_locks = {}
+
+def get_lock(user_id: str):
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
+    return user_locks[user_id]
 
 # =====================
 # DISCORD SETUP
@@ -747,8 +753,12 @@ class SellQuantityView(discord.ui.View):
         await self.sell_item(interaction, "all")
 
     async def sell_item(self, interaction, amount):
+
     user_id = self.user_id
-    item = self.item
+
+    async with get_lock(user_id):
+
+        item = self.item
 
     cursor.execute(
         "SELECT amount FROM inventory WHERE user_id = ? AND item = ?",
