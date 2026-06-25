@@ -150,11 +150,10 @@ conn = sqlite3.connect("economy.db")
 cursor = conn.cursor()
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS inventory (
-    user_id TEXT,
-    item TEXT,
-    amount INTEGER DEFAULT 1,
-    PRIMARY KEY (user_id, item)
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    wallet INTEGER DEFAULT 0,
+    bank INTEGER DEFAULT 0
 )
 """)
 conn.commit()
@@ -406,7 +405,15 @@ def get_fish_multiplier(job):
 # ---------------------
 # MINING FUNCTIONS
 # ---------------------
-# future mining functions here
+def get_pickaxe_shop_text():
+    text = []
+
+    for name, data in PICKAXE_SHOP.items():
+        text.append(
+            f"{name} — {data['price']} BC | STR {data['strength']}"
+        )
+
+    return "\n".join(text)
 
 # =====================
 # TIPS SYSTEM
@@ -540,10 +547,6 @@ class BurgerShopView(discord.ui.View):
             ephemeral=True
         )
 
-class BurgerShopView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=60)
-
 # =====================
 # UI SYSTEMS
 # 8.2 JOB UI
@@ -586,14 +589,16 @@ class JobView(discord.ui.View):
         )
 
     @discord.ui.button(label="💻 Programmer", style=discord.ButtonStyle.blurple)
-    async def programmer(self, interaction: discord.Interaction, button: discord.ui.Button):
-        set_job(str(interaction.user.id), "Programmer")
-        await interaction.response.send_message(
+async def programmer(self, interaction: discord.Interaction, button: discord.ui.Button):
+    set_job(str(interaction.user.id), "Programmer")
+    await interaction.response.send_message(
+        "💻 You selected Programmer!",
+        ephemeral=True
+    )
            
 # =====================
 # CHUNK 8.3 — INVENTORY UI
 # =====================
-
 class InventoryView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=60)
@@ -618,8 +623,6 @@ class InventoryView(discord.ui.View):
                 view=self
             )
 
-        counts = Counter(items)
-
         fishing_items = []
         mining_items = []
         digging_items = []
@@ -627,10 +630,10 @@ class InventoryView(discord.ui.View):
         food_items = []
         misc_items = []
 
-        for item, qty in counts.items():
+        for item, qty in items:
             line = f"{item} x{qty}"
 
-            if "Fish" in item:
+            if item in sum(FISH.values(), []):
                 fishing_items.append(line)
 
             elif "Ore" in item or "Gem" in item:
@@ -663,7 +666,8 @@ class InventoryView(discord.ui.View):
         )
         embed.add_field(
             name="⛏️ Mining Items",
-            value=format_section(mining_items),
+           
+value=format_section(mining_items),
             inline=False
         )
         embed.add_field(
@@ -840,8 +844,7 @@ class SellQuantityView(discord.ui.View):
 class SellItemView(discord.ui.View):
     def __init__(self, items, user_id):
         super().__init__(timeout=60)
-        self.items = items
-        self.user_id = user_id
+        self.add_item(SellItemSelect(items, user_id))
 
 # =====================
 # COMMANDS
@@ -1024,7 +1027,7 @@ async def inventory(interaction: discord.Interaction):
     for item, amount in items:
         line = f"{item} x{amount}"
 
-        if "Fish" in item:
+        if item in sum(FISH.values(), []):
             fishing.append(line)
         elif "Ore" in item or "Gem" in item:
             mining.append(line)
