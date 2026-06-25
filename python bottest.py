@@ -338,8 +338,6 @@ def get_inventory(user_id):
 
 def add_item(user_id, item):
     with conn:
-        cursor.execute("BEGIN IMMEDIATE")
-
         cursor.execute("""
             INSERT INTO inventory (user_id, item, amount)
             VALUES (?, ?, 1)
