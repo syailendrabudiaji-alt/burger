@@ -1,4 +1,3 @@
-
 import discord
 import time
 import asyncio
@@ -160,6 +159,14 @@ CREATE TABLE IF NOT EXISTS inventory (
 """)
 conn.commit()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS jobs (
+    user_id TEXT PRIMARY KEY,
+    job TEXT
+)
+""")
+conn.commit()
+
 # 🔒 SAFE ADD COLUMN CHECK
 cursor.execute("PRAGMA table_info(users)")
 columns = [col[1] for col in cursor.fetchall()]
@@ -248,14 +255,12 @@ def update_user(user_id, wallet, bank):
 # ---------------------
 # INVENTORY FUNCTIONS
 # ---------------------
-
 def get_inventory(user_id):
     cursor.execute(
         "SELECT item, amount FROM inventory WHERE user_id = ?",
         (user_id,)
     )
     return cursor.fetchall()
-
 
 def add_item(user_id, item):
     cursor.execute("""
@@ -264,7 +269,6 @@ def add_item(user_id, item):
         ON CONFLICT(user_id, item)
         DO UPDATE SET amount = amount + 1
     """, (user_id, item))
-
     conn.commit()
 
 # ---------------------
@@ -291,25 +295,14 @@ def get_job(user_id):
 def get_work_reward(user_id):
     job = get_job(user_id)
 
-    if not job or job not in JOBS:
-        return None, 0
+    if not job:
+        return 0
 
-    min_pay = JOBS[job]["min"]
-    max_pay = JOBS[job]["max"]
+    job_data = JOBS.get(job)
+    if not job_data:
+        return 0
 
-    reward = random.randint(min_pay, max_pay)
-    return job, reward
-
-
-# ---------------------
-# SHOP FUNCTIONS
-# ---------------------
-def get_pickaxe_shop_text():
-    return "\n".join(
-        f"⛏️ {name} — {data['price']} BC | STR {data['strength']}"
-        for name, data in PICKAXE_SHOP.items()
-    )
-
+    return random.randint(job_data["min"], job_data["max"])
 
 # ---------------------
 # FISHING FUNCTIONS
@@ -317,22 +310,20 @@ def get_pickaxe_shop_text():
 def get_random_fish(rarity):
     fish_list = FISH.get(rarity, ["Trash Fish"])
     fish = random.choice(fish_list)
-
-    # check special fish override
-    if fish in SPECIAL_FISH:
-        return fish
-
     return fish
 
 
 def fish_with_rod(rod_name):
     rod = RODS.get(rod_name, RODS["Stick Rod"])
-    luck = rod["luck"]
 
-    roll = random.randint(1, 100)
+    # safe luck value
+    luck = rod.get("luck", 0)
 
-    # luck improves chance of better fish
-    roll = roll - luck
+    # use float so 99.7 etc works
+    roll = random.uniform(1, 100)
+
+    # luck improves fish rarity
+    roll -= luck
 
     if roll <= 45:
         rarity = "Common"
@@ -348,22 +339,33 @@ def fish_with_rod(rod_name):
         rarity = "Mythic"
     elif roll <= 99.7:
         rarity = "Deepsea"
-    else:
+    elif roll <= 99.95:
         rarity = "Abyssal"
+    else:
+        rarity = "Exotic"
 
     fish = get_random_fish(rarity)
-
     return fish, rarity
 
 
 def get_user_rod(user_id):
-    cursor.execute("SELECT rod FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute(
+        "SELECT rod FROM users WHERE user_id = ?",
+        (user_id,)
+    )
     data = cursor.fetchone()
 
-    if not data:
+    if not data or not data[0]:
         return "Stick Rod"
 
     return data[0]
+
+
+ROD_ABILITIES = {
+    "Magnet Rod": ["bonus_cash"],
+    "Pickpocket Rod": ["steal"],
+    "Distributor Rod": ["auto_sell"]
+}
 
 
 def apply_abilities(user, rod_name, fish_list):
@@ -386,9 +388,11 @@ def apply_abilities(user, rod_name, fish_list):
 
     return fish_list
 
+
 def get_fish_value(fish):
     if fish in SPECIAL_FISH:
         return random.randint(*SPECIAL_FISH[fish]["price"])
+
     return random.randint(10, 5000)
 
 # ---------------------
@@ -448,7 +452,7 @@ async def on_ready():
 
 # ---------------------
 # SHOP UI
-# ---------------------
+# -
 
 class BurgerShopSelect(discord.ui.Select):
     def __init__(self):
@@ -535,6 +539,10 @@ class BurgerShopView(discord.ui.View):
             "\n".join([f"• {i}" for i in items]),
             ephemeral=True
         )
+
+class BurgerShopView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
 
 # =====================
 # UI SYSTEMS
@@ -831,10 +839,9 @@ class SellQuantityView(discord.ui.View):
 
 class SellItemView(discord.ui.View):
     def __init__(self, items, user_id):
-        super().__init__()
-        self.add_item(
-            SellItemSelect(items, user_id)
-        )
+        super().__init__(timeout=60)
+        self.items = items
+        self.user_id = user_id
 
 # =====================
 # COMMANDS
@@ -1051,7 +1058,7 @@ async def sell(interaction: discord.Interaction):
             ephemeral=True
         )
 
-    unique_items = list(set(items))
+    unique_items = [item for item, amount in items]
     view = SellItemView(unique_items, user_id)
 
     embed = discord.Embed(
@@ -1143,8 +1150,10 @@ async def fish_cmd(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     user = get_user(user_id)
 
-    rod_name = "Stick Rod"
-    fishes = fish_with_rod(rod_name)
+    rod_name = get_user_rod(user_id)
+
+    fish, rarity = fish_with_rod(rod_name)
+    add_item(user_id, fish)
 
     fish_prices = {
         "Common": 20,
@@ -1152,21 +1161,13 @@ async def fish_cmd(interaction: discord.Interaction):
         "Rare": 100,
         "Epic": 250,
         "Legendary": 500,
-        "Mythic": 1000
+        "Mythic": 1000,
+        "Deepsea": 2500,
+        "Abyssal": 5000,
+        "Exotic": 10000
     }
 
-    total = 0
-
-    for fish in fishes:
-        add_item(user_id, fish)
-
-        value = 20
-        for rarity, fish_list in FISH.items():
-            if fish in fish_list:
-                value = fish_prices.get(rarity, 20)
-                break
-
-        total += value
+    total = fish_prices.get(rarity, 20)
 
     if get_job(user_id) == "Fisherman":
         total = int(total * 1.2)
@@ -1175,7 +1176,7 @@ async def fish_cmd(interaction: discord.Interaction):
     update_user(user_id, user["wallet"], user["bank"])
 
     await interaction.response.send_message(
-        f"🎣 Caught **{len(fishes)} fish** | 💰 +{total} BC"
+        f"🎣 You caught **{fish}** ({rarity}) | 💰 +{total} BC"
     )
 
 # =====================
