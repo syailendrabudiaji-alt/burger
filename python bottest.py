@@ -89,6 +89,8 @@ SPECIAL_FISH = {
 }
 
 JOBS = {
+    "Cashier": {"min": 35, "max": 110},
+"Programmer": {"min": 150, "max": 450}, 
     "Fisherman": {"min": 20, "max": 80},
     "Miner": {"min": 25, "max": 100},
     "Delivery Worker": {"min": 30, "max": 90},
@@ -129,7 +131,6 @@ ROD_ABILITIES = {
 work_cooldown = {}
 cook_cooldown = {}
 tips_started = False
-
 
 # =====================
 # DISCORD SETUP
@@ -415,6 +416,17 @@ def get_pickaxe_shop_text():
 
     return "\n".join(text)
 
+# ---------------------
+# GLOBAL FUNCTIONS
+# ---------------------
+
+def clean_cooldowns():
+    current = time.time()
+    expired = [user for user, t in work_cooldown.items() if t < current]
+
+    for user in expired:
+        del work_cooldown[user]
+
 # =====================
 # TIPS SYSTEM
 # =====================
@@ -552,49 +564,35 @@ class BurgerShopView(discord.ui.View):
 # 8.2 JOB UI
 # =====================
 
+class JobSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label=job, value=job)
+            for job in JOBS.keys()
+        ]
+
+        super().__init__(
+            placeholder="Choose your job...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_job = self.values[0]
+
+        set_job(str(interaction.user.id), selected_job)
+
+        await interaction.response.send_message(
+            f"✅ Job set to **{selected_job}**",
+            ephemeral=True
+        )
+
+
 class JobView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="💼 Cashier", style=discord.ButtonStyle.green)
-    async def cashier(self, interaction: discord.Interaction, button: discord.ui.Button):
-        set_job(str(interaction.user.id), "Cashier")
-        await interaction.response.send_message(
-            "💼 You selected Cashier!",
-            ephemeral=True
-        )
-
-    @discord.ui.button(label="⛏️ Miner", style=discord.ButtonStyle.gray)
-    async def miner(self, interaction: discord.Interaction, button: discord.ui.Button):
-        set_job(str(interaction.user.id), "Miner")
-        await interaction.response.send_message(
-            "⛏️ You selected Miner!",
-            ephemeral=True
-        )
-
-    @discord.ui.button(label="👨‍🍳 Chef", style=discord.ButtonStyle.blurple)
-    async def chef(self, interaction: discord.Interaction, button: discord.ui.Button):
-        set_job(str(interaction.user.id), "Chef")
-        await interaction.response.send_message(
-            "👨‍🍳 You selected Chef!",
-            ephemeral=True
-        )
-
-    @discord.ui.button(label="🚚 Delivery", style=discord.ButtonStyle.green)
-    async def delivery(self, interaction: discord.Interaction, button: discord.ui.Button):
-        set_job(str(interaction.user.id), "Delivery")
-        await interaction.response.send_message(
-            "🚚 You selected Delivery!",
-            ephemeral=True
-        )
-
-    @discord.ui.button(label="💻 Programmer", style=discord.ButtonStyle.blurple)
-async def programmer(self, interaction: discord.Interaction, button: discord.ui.Button):
-    set_job(str(interaction.user.id), "Programmer")
-    await interaction.response.send_message(
-        "💻 You selected Programmer!",
-        ephemeral=True
-    )
+        super().__init__(timeout=60)
+        self.add_item(JobSelect())
            
 # =====================
 # CHUNK 8.3 — INVENTORY UI
@@ -772,80 +770,75 @@ class SellQuantityView(discord.ui.View):
         await self.sell_item(interaction, "all")
 
     async def sell_item(self, interaction, amount):
-        user_id = self.user_id
-        item = self.item
+    user_id = self.user_id
+    item = self.item
 
-        inventory = get_inventory(user_id)
-        count = inventory.count(item)
+    cursor.execute(
+        "SELECT amount FROM inventory WHERE user_id = ? AND item = ?",
+        (user_id, item)
+    )
+    row = cursor.fetchone()
 
-        if count == 0:
-            return await interaction.response.send_message(
-                "❌ You don't own this item.",
-                ephemeral=True
-            )
+    if not row:
+        return await interaction.response.send_message(
+            "❌ You don't own this item.",
+            ephemeral=True
+        )
 
-        if amount == "all":
-            amount = count
+    owned = row[0]
 
-        amount = min(amount, count)
+    if amount == "all":
+        amount = owned
 
-        price_table = {
-            "Tin Ore": 10,
-            "Gold Ore": 100,
-            "Diamond": 500,
-            "Common Fish": 5,
-            "Rare Fish": 50
-        }
+    amount = min(amount, owned)
 
-        price = price_table.get(item, 10)
-        total = price * amount
+    price_table = {
+        "Tin Ore": 10,
+        "Gold Ore": 100,
+        "Diamond": 500,
+        "Common Fish": 5,
+        "Rare Fish": 50
+    }
 
-        for _ in range(amount):
-            inventory.remove(item)
+    price = price_table.get(item, 10)
+    total = price * amount
 
+    new_amount = owned - amount
+
+    if new_amount <= 0:
         cursor.execute(
-            "DELETE FROM inventory WHERE user_id = ?",
-            (user_id,)
+            "DELETE FROM inventory WHERE user_id = ? AND item = ?",
+            (user_id, item)
+        )
+    else:
+        cursor.execute(
+            "UPDATE inventory SET amount = ? WHERE user_id = ? AND item = ?",
+            (new_amount, user_id, item)
         )
 
-        for i in inventory:
-            cursor.execute(
-                "INSERT INTO inventory (user_id, item) VALUES (?, ?)",
-                (user_id, i)
-            )
+    conn.commit()
 
-        conn.commit()
+    user = get_user(user_id)
+    user["wallet"] += total
+    update_user(user_id, user["wallet"], user["bank"])
 
-        user = get_user(user_id)
-        user["wallet"] += total
-        update_user(
-            user_id,
-            user["wallet"],
-            user["bank"]
-        )
+    embed = discord.Embed(
+        title="✅ Sale Complete",
+        description=f"Sold **{item} x{amount}**",
+        color=0x00ff99
+    )
+    embed.add_field(name="💰 Earned", value=f"{total} BC")
 
-        embed = discord.Embed(
-            title="✅ Sale Complete",
-            description=f"Sold **{item} x{amount}**",
-            color=0x00ff99
-        )
-
-        embed.add_field(
-            name="💰 Earned",
-            value=f"{total} BC"
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=None
-        )
+    await interaction.response.edit_message(
+        embed=embed,
+        view=None
+    )
 
 
 class SellItemView(discord.ui.View):
     def __init__(self, items, user_id):
         super().__init__(timeout=60)
         self.add_item(SellItemSelect(items, user_id))
-
 # =====================
 # COMMANDS
 # =====================
@@ -1107,8 +1100,8 @@ async def setjob(interaction: discord.Interaction, job: str):
 # ---------------------
 @tree.command(name="work", description="Work your job", guild=guild)
 async def work(interaction: discord.Interaction):
+    clean_cooldowns()
     user_id = str(interaction.user.id)
-    current_time = time.time()
 
     if user_id in work_cooldown:
         remaining = work_cooldown[user_id] - current_time
