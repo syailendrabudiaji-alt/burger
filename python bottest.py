@@ -1200,14 +1200,10 @@ async def fish_cmd(interaction: discord.Interaction):
     user = get_user(user_id)
 
     rod_name = get_user_rod(user_id)
-
     fish, rarity = fish_with_rod(rod_name)
 
-fish_list = [fish]
-fish_list = apply_abilities(user, rod_name, fish_list)
-
-for caught_fish in fish_list:
-    add_item(user_id, caught_fish)
+    fish_list = [fish]
+    fish_list = apply_abilities(user, rod_name, fish_list)
 
     fish_prices = {
         "Common": 20,
@@ -1225,6 +1221,9 @@ for caught_fish in fish_list:
 
     if get_job(user_id) == "Fisherman":
         total = int(total * 1.2)
+
+    for caught_fish in fish_list:
+        add_item(user_id, caught_fish)
 
     user["wallet"] += total
     update_user(user_id, user["wallet"], user["bank"])
