@@ -563,7 +563,6 @@ class BurgerShopView(discord.ui.View):
 # UI SYSTEMS
 # 8.2 JOB UI
 # =====================
-
 class JobSelect(discord.ui.Select):
     def __init__(self):
         options = [
@@ -579,15 +578,20 @@ class JobSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        selected_job = self.values[0]
+    selected_job = self.values[0]
 
-        set_job(str(interaction.user.id), selected_job)
-
-        await interaction.response.send_message(
-            f"✅ Job set to **{selected_job}**",
+    if selected_job not in JOBS:
+        return await interaction.response.send_message(
+            "❌ Invalid job selected.",
             ephemeral=True
         )
 
+    set_job(str(interaction.user.id), selected_job)
+
+    await interaction.response.send_message(
+        f"✅ Job set to **{selected_job}**",
+        ephemeral=True
+    )
 
 class JobView(discord.ui.View):
     def __init__(self):
@@ -602,11 +606,8 @@ class InventoryView(discord.ui.View):
         super().__init__(timeout=60)
 
     @discord.ui.button(label="Refresh Inventory", style=discord.ButtonStyle.green)
-    async def refresh_inventory(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    async def refresh_inventory(self, interaction: discord.Interaction, button: discord.ui.Button):
+
         user_id = str(interaction.user.id)
         items = get_inventory(user_id)
 
@@ -616,10 +617,7 @@ class InventoryView(discord.ui.View):
                 description="You currently have no items.",
                 color=0x3498db
             )
-            return await interaction.response.edit_message(
-                embed=embed,
-                view=self
-            )
+            return await interaction.response.edit_message(embed=embed, view=self)
 
         fishing_items = []
         mining_items = []
@@ -631,7 +629,8 @@ class InventoryView(discord.ui.View):
         for item, qty in items:
             line = f"{item} x{qty}"
 
-            if item in sum(FISH.values(), []):
+            # safer fishing detection
+            if any(fish in item for fish_list in FISH.values() for fish in fish_list):
                 fishing_items.append(line)
 
             elif "Ore" in item or "Gem" in item:
@@ -649,50 +648,19 @@ class InventoryView(discord.ui.View):
             else:
                 misc_items.append(line)
 
-        def format_section(items_list):
-            return "\n".join(items_list) if items_list else "0 items"
+        def fmt(lst):
+            return "\n".join(lst) if lst else "0 items"
 
-        embed = discord.Embed(
-            title="🎒 Your Inventory",
-            color=0x3498db
-        )
+        embed = discord.Embed(title="🎒 Your Inventory", color=0x3498db)
 
-        embed.add_field(
-            name="🎣 Fishing Items",
-            value=format_section(fishing_items),
-            inline=False
-        )
-        embed.add_field(
-            name="⛏️ Mining Items",
-           
-value=format_section(mining_items),
-            inline=False
-        )
-        embed.add_field(
-            name="🪏 Digging Loot",
-            value=format_section(digging_items),
-            inline=False
-        )
-        embed.add_field(
-            name="🛠️ Tools",
-            value=format_section(tools_items),
-            inline=False
-        )
-        embed.add_field(
-            name="🍳 Food",
-            value=format_section(food_items),
-            inline=False
-        )
-        embed.add_field(
-            name="📦 Misc",
-            value=format_section(misc_items),
-            inline=False
-        )
+        embed.add_field(name="🎣 Fishing Items", value=fmt(fishing_items), inline=False)
+        embed.add_field(name="⛏️ Mining Items", value=fmt(mining_items), inline=False)
+        embed.add_field(name="🪏 Digging Loot", value=fmt(digging_items), inline=False)
+        embed.add_field(name="🛠️ Tools", value=fmt(tools_items), inline=False)
+        embed.add_field(name="🍳 Food", value=fmt(food_items), inline=False)
+        embed.add_field(name="📦 Misc", value=fmt(misc_items), inline=False)
 
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
-        )
+        await interaction.response.edit_message(embed=embed, view=self)
 
 # =====================
 # UI SYSTEMS — INVENTORY / SELL UI
@@ -1100,14 +1068,18 @@ async def setjob(interaction: discord.Interaction, job: str):
 # ---------------------
 @tree.command(name="work", description="Work your job", guild=guild)
 async def work(interaction: discord.Interaction):
+
     clean_cooldowns()
     user_id = str(interaction.user.id)
 
+    current_time = time.time()
+
     if user_id in work_cooldown:
         remaining = work_cooldown[user_id] - current_time
+
         if remaining > 0:
             return await interaction.response.send_message(
-                f"😴 Cooldown: {int(remaining//60)} mins left",
+                f"😴 Cooldown: {int(remaining // 60)} mins left",
                 ephemeral=True
             )
 
