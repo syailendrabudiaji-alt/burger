@@ -153,12 +153,20 @@ tips_started = False
 # =====================
 # SQLITE SETUP
 # =====================
-conn = sqlite3.connect("economy.db")
+
+conn = sqlite3.connect("economy.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# ---------------------
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("PRAGMA synchronous=NORMAL")
+
+def get_cursor():
+    return conn.cursor()
+
+# =====================
 # USERS TABLE
-# ---------------------
+# =====================
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
@@ -169,9 +177,11 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 conn.commit()
 
-# ---------------------
+
+# =====================
 # JOBS TABLE
-# ---------------------
+# =====================
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS jobs (
     user_id TEXT PRIMARY KEY,
@@ -180,9 +190,11 @@ CREATE TABLE IF NOT EXISTS jobs (
 """)
 conn.commit()
 
-# ---------------------
-# INVENTORY TABLE (FIXED)
-# ---------------------
+
+# =====================
+# INVENTORY TABLE
+# =====================
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS inventory (
     user_id TEXT,
@@ -193,6 +205,12 @@ CREATE TABLE IF NOT EXISTS inventory (
 """)
 conn.commit()
 
+
+# =====================
+# SAFETY MIGRATIONS
+# =====================
+
+# Fix rod NULL issue
 cursor.execute("""
 UPDATE users
 SET rod = 'Stick Rod'
@@ -200,6 +218,7 @@ WHERE rod IS NULL
 """)
 conn.commit()
 
+# Ensure inventory has correct schema (old DB support)
 cursor.execute("PRAGMA table_info(inventory)")
 columns = [col[1] for col in cursor.fetchall()]
 
@@ -209,9 +228,11 @@ if "amount" not in columns:
     """)
     conn.commit()
 
+
 # =====================
 # BACKUP SYSTEMS
 # =====================
+
 BACKUP_FILE = "economy_backup.json"
 
 def load_backup():
@@ -233,6 +254,7 @@ def save_backup(user_id, wallet, bank):
     with open(BACKUP_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+
 # =====================
 # DATABASE FUNCTIONS
 # =====================
@@ -240,72 +262,116 @@ def save_backup(user_id, wallet, bank):
 # ---------------------
 # BALANCE FUNCTIONS
 # ---------------------
+
 def get_user(user_id):
-    cursor.execute(
-        "SELECT wallet, bank FROM users WHERE user_id = ?",
+    cur = get_cursor()
+
+    cur.execute(
+        "SELECT wallet, bank, rod FROM users WHERE user_id = ?",
         (user_id,)
     )
-    data = cursor.fetchone()
+    data = cur.fetchone()
 
     if not data:
         cursor.execute(
-            "INSERT INTO users (user_id, wallet, bank) VALUES (?, 0, 0)",
+            "INSERT INTO users (user_id, wallet, bank, rod) VALUES (?, 0, 0, 'Stick Rod')",
             (user_id,)
         )
         conn.commit()
-        return {"wallet": 0, "bank": 0}
+        return {"wallet": 0, "bank": 0, "rod": "Stick Rod"}
 
-    return {"wallet": data[0], "bank": data[1]}
+    return {"wallet": data[0], "bank": data[1], "rod": data[2]}
 
+
+def set_user_balance(user_id, wallet, bank):
+    with conn:
+        cursor.execute("""
+            UPDATE users
+            SET wallet = ?, bank = ?
+            WHERE user_id = ?
+        """, (wallet, bank, user_id))
 
 def update_user(user_id, wallet, bank):
-    cursor.execute("""
-        UPDATE users
-        SET wallet = ?, bank = ?
-        WHERE user_id = ?
-    """, (wallet, bank, user_id))
-    conn.commit()
+    with conn:
+        cursor.execute("""
+            UPDATE users
+            SET wallet = ?, bank = ?
+            WHERE user_id = ?
+        """, (wallet, bank, user_id))
 
+# =====================
+# ATOMIC MONEY FUNCTIONS (PUT HERE)
+# =====================
+
+def add_wallet(user_id, amount):
+    with conn:
+        cursor.execute("""
+            UPDATE users
+            SET wallet = wallet + ?
+            WHERE user_id = ?
+        """, (amount, user_id))
+
+
+def add_bank(user_id, amount):
+    with conn:
+        cursor.execute("""
+            UPDATE users
+            SET bank = bank + ?
+            WHERE user_id = ?
+        """, (amount, user_id))
 
 # ---------------------
 # INVENTORY FUNCTIONS
 # ---------------------
+
+db_lock = asyncio.Lock()
+
 def get_inventory(user_id):
-    cursor.execute(
+    cur = get_cursor()
+
+    cur.execute(
         "SELECT item, amount FROM inventory WHERE user_id = ?",
         (user_id,)
     )
-    return cursor.fetchall()
+    return cur.fetchall()
+
 
 def add_item(user_id, item):
-    cursor.execute("""
-        INSERT INTO inventory (user_id, item, amount)
-        VALUES (?, ?, 1)
-        ON CONFLICT(user_id, item)
-        DO UPDATE SET amount = amount + 1
-    """, (user_id, item))
-    conn.commit()
+    with conn:
+        cursor.execute("BEGIN IMMEDIATE")
+
+        cursor.execute("""
+            INSERT INTO inventory (user_id, item, amount)
+            VALUES (?, ?, 1)
+            ON CONFLICT(user_id, item)
+            DO UPDATE SET amount = amount + 1
+        """, (user_id, item))
+
 
 # ---------------------
 # JOB FUNCTIONS
 # ---------------------
+
 def set_job(user_id, job):
     cursor.execute("""
         INSERT INTO jobs (user_id, job)
         VALUES (?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET job = excluded.job
+        ON CONFLICT(user_id)
+        DO UPDATE SET job = excluded.job
     """, (user_id, job))
     conn.commit()
 
 
 def get_job(user_id):
-    cursor.execute(
+    cur = get_cursor()
+
+    cur.execute(
         "SELECT job FROM jobs WHERE user_id = ?",
         (user_id,)
     )
-    data = cursor.fetchone()
-    return data[0] if data else None
+    data = cur.fetchone()
 
+    return data[0] if data else None
 
 def get_work_reward(user_id):
     job = get_job(user_id)
@@ -364,11 +430,13 @@ def fish_with_rod(rod_name):
 
 
 def get_user_rod(user_id):
-    cursor.execute(
+    cur = get_cursor()
+
+    cur.execute(
         "SELECT rod FROM users WHERE user_id = ?",
         (user_id,)
     )
-    data = cursor.fetchone()
+    data = cur.fetchone()
 
     if not data or not data[0]:
         return "Stick Rod"
@@ -753,61 +821,59 @@ class SellQuantityView(discord.ui.View):
         await self.sell_item(interaction, "all")
 
     async def sell_item(self, interaction, amount):
-
     user_id = self.user_id
 
     async with get_lock(user_id):
-
         item = self.item
 
-    cursor.execute(
-        "SELECT amount FROM inventory WHERE user_id = ? AND item = ?",
-        (user_id, item)
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        return await interaction.response.send_message(
-            "❌ You don't own this item.",
-            ephemeral=True
-        )
-
-    owned = row[0]
-
-    if amount == "all":
-        amount = owned
-
-    amount = min(amount, owned)
-
-    price_table = {
-        "Tin Ore": 10,
-        "Gold Ore": 100,
-        "Diamond": 500,
-        "Common Fish": 5,
-        "Rare Fish": 50
-    }
-
-    price = price_table.get(item, 10)
-    total = price * amount
-
-    new_amount = owned - amount
-
-    if new_amount <= 0:
         cursor.execute(
-            "DELETE FROM inventory WHERE user_id = ? AND item = ?",
+            "SELECT amount FROM inventory WHERE user_id = ? AND item = ?",
             (user_id, item)
         )
-    else:
-        cursor.execute(
-            "UPDATE inventory SET amount = ? WHERE user_id = ? AND item = ?",
-            (new_amount, user_id, item)
-        )
+        row = cursor.fetchone()
 
-    conn.commit()
+        if not row:
+            return await interaction.response.send_message(
+                "❌ You don't own this item.",
+                ephemeral=True
+            )
 
-    user = get_user(user_id)
-    user["wallet"] += total
-    update_user(user_id, user["wallet"], user["bank"])
+        owned = row[0]
+
+        if amount == "all":
+            amount = owned
+
+        amount = min(amount, owned)
+
+        price_table = {
+            "Tin Ore": 10,
+            "Gold Ore": 100,
+            "Diamond": 500,
+            "Common Fish": 5,
+            "Rare Fish": 50
+        }
+
+        total = price_table.get(item, 10) * amount
+        new_amount = owned - amount
+
+        if new_amount <= 0:
+            cursor.execute(
+                "DELETE FROM inventory WHERE user_id = ? AND item = ?",
+                (user_id, item)
+            )
+        else:
+            cursor.execute(
+                "UPDATE inventory SET amount = ? WHERE user_id = ? AND item = ?",
+                (new_amount, user_id, item)
+            )
+
+        cursor.execute("""
+            UPDATE users
+            SET wallet = wallet + ?
+            WHERE user_id = ?
+        """, (total, user_id))
+
+        conn.commit()
 
     embed = discord.Embed(
         title="✅ Sale Complete",
@@ -816,10 +882,7 @@ class SellQuantityView(discord.ui.View):
     )
     embed.add_field(name="💰 Earned", value=f"{total} BC")
 
-    await interaction.response.edit_message(
-        embed=embed,
-        view=None
-    )
+    await interaction.response.edit_message(embed=embed, view=None)
 
 
 class SellItemView(discord.ui.View):
@@ -1141,7 +1204,12 @@ async def fish_cmd(interaction: discord.Interaction):
     rod_name = get_user_rod(user_id)
 
     fish, rarity = fish_with_rod(rod_name)
-    add_item(user_id, fish)
+
+fish_list = [fish]
+fish_list = apply_abilities(user, rod_name, fish_list)
+
+for caught_fish in fish_list:
+    add_item(user_id, caught_fish)
 
     fish_prices = {
         "Common": 20,
